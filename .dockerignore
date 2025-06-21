@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+LICENSE
+SECURITY.md
+CHANGELOG.md
+
+# Local files
+.DS_Store
+*.log
+*.tmp
+.env
+.env.*
+
+# Docker
+.dockerignore
+docker-compose.yml
+docker-compose.yaml
+compose.yml
+compose.yaml
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# References directory (don't need in image)
+references/
+
+# Claude trace logs
+.claude-trace/
+
+# Build artifacts
+*.tar
+*.tar.gz
+*.zip 

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Claude YOLO - Quick wrapper for claude.sh --yolo
+# Provides safe Docker-based Claude Code execution with full permissions
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_SH="$SCRIPT_DIR/claude.sh"
+
+if [ ! -f "$CLAUDE_SH" ]; then
+    echo "Error: claude.sh not found at $CLAUDE_SH" >&2
+    echo "Make sure you're running this from the claude-code-yolo directory" >&2
+    exit 1
+fi
+
+if [ ! -x "$CLAUDE_SH" ]; then
+    echo "Error: claude.sh is not executable" >&2
+    echo "Run: chmod +x $CLAUDE_SH" >&2
+    exit 1
+fi
+
+# Pass all arguments to claude.sh with --yolo flag
+exec "$CLAUDE_SH" --yolo "$@"
