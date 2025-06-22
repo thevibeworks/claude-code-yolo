@@ -5,6 +5,61 @@
 
 ## Issue Analysis: 2025-06-22
 
+### [enhancement-completed] Script simplification and trace syntax fixes
+
+**Problems Fixed**:
+
+1. **Inconsistent claude-trace syntax**: Fixed local mode missing "claude" command
+   - Local: `claude-trace --run-with claude .` (was missing "claude")
+   - Docker: `claude-trace --run-with .` → properly transforms to `--run-with claude --dangerously-skip-permissions .`
+
+2. **USE_NONROOT complexity eliminated**: Removed 50+ lines of unnecessary code
+   - Always run as claude user (was already default behavior)
+   - Removed dead root mode code path from docker-entrypoint.sh
+   - Simplified UID/GID mapping logic
+
+**Results**:
+- ✅ Consistent trace syntax between local and Docker modes
+- ✅ 50+ lines removed from docker-entrypoint.sh
+- ✅ Cleaner, more maintainable codebase
+- ✅ Always run as claude user for security and simplicity
+
+**Status**: ✅ **COMPLETED**
+
+---
+
+## Issue Analysis: 2025-06-22
+
+### [issue-analysis] claude.sh and docker-entrypoint.sh complexity review
+
+**Problems Identified**:
+
+1. **Inconsistent claude-trace syntax**: 
+   - claude.sh:305 (local): `--run-with claude .` ❌
+   - claude.sh:648 (docker): `--run-with .` ✅
+
+2. **USE_NONROOT unnecessary complexity**:
+   - Always set to `true` in Docker mode (line 512)
+   - Root mode code path is dead code (lines 246-275 in docker-entrypoint.sh)
+   - Adds 100+ lines of UID/GID mapping, symlink creation
+   - No real benefit since we always use non-root anyway
+
+3. **Cursor bot was wrong**:
+   - Current docker-entrypoint.sh logic is actually correct
+   - Transforms: `--run-with .` → `--run-with --dangerously-skip-permissions .`
+   - Bot confused about argument order
+
+**Solutions**:
+- Fix local mode claude-trace syntax (remove "claude")
+- Remove USE_NONROOT entirely, always run as claude user
+- Simplify docker-entrypoint.sh by 50+ lines
+
+**Status**: Analysis complete
+
+---
+
+## Issue Analysis: 2025-06-22
+
 ### [bug-critical] Argument parsing infinite loop in claude-yolo
 
 **Problem**: Cursor bot detected critical bugs in claude-yolo argument parsing.
