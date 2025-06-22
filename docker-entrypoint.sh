@@ -117,18 +117,21 @@ setup_nonroot_user() {
         ln -sfn /root/.aws "$CLAUDE_HOME/.aws"
     fi
 
-    # Handle any additional volumes mounted via -v flag
-    # These would be in /root/* and need symlinks too
-    # We'll handle common ones that users might mount
-    for item in .ssh .docker .terraform.d .kube .gitconfig .npmrc; do
-        if [ -e "/root/$item" ]; then
-            echo "[entrypoint] linking $item (user-mounted)"
-            if [ -d "/root/$item" ]; then
-                chmod -R 755 "/root/$item" 2>/dev/null || true
-            else
-                chmod 644 "/root/$item" 2>/dev/null || true
-            fi
-            ln -sfn "/root/$item" "$CLAUDE_HOME/$item"
+    # Handle user-mounted volumes in /root/*
+    # Users are responsible for setting appropriate permissions on mounted volumes
+    # We only create symlinks without modifying permissions
+    for item in /root/.*; do
+        if [ -e "$item" ] && [ "$item" != "/root/." ] && [ "$item" != "/root/.." ]; then
+            basename_item=$(basename "$item")
+            case "$basename_item" in
+            .claude | .aws | .config)
+                continue
+                ;;
+            *)
+                echo "[entrypoint] linking $basename_item (user-mounted, preserving permissions)"
+                ln -sfn "$item" "$CLAUDE_HOME/$basename_item"
+                ;;
+            esac
         fi
     done
 }
@@ -138,22 +141,22 @@ build_gosu_env_cmd() {
     # Usage: build_gosu_env_cmd <user> <command> [args...]
     local user="$1"
     shift
-    
+
     # Start with gosu user env
     local -a cmd=(gosu "$user" env)
-    
+
     # Always set HOME and PATH
     cmd+=("HOME=$CLAUDE_HOME" "PATH=$PATH")
-    
+
     # Pass through proxy settings
     [ -n "$HTTP_PROXY" ] && cmd+=("HTTP_PROXY=$HTTP_PROXY")
     [ -n "$HTTPS_PROXY" ] && cmd+=("HTTPS_PROXY=$HTTPS_PROXY")
     [ -n "$NO_PROXY" ] && cmd+=("NO_PROXY=$NO_PROXY")
-    
+
     # Pass through Anthropic settings
     [ -n "$ANTHROPIC_MODEL" ] && cmd+=("ANTHROPIC_MODEL=$ANTHROPIC_MODEL")
     [ -n "$ANTHROPIC_API_KEY" ] && cmd+=("ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
-    
+
     # Pass through AWS credentials for Bedrock
     [ -n "$AWS_ACCESS_KEY_ID" ] && cmd+=("AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID")
     [ -n "$AWS_SECRET_ACCESS_KEY" ] && cmd+=("AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY")
@@ -161,21 +164,21 @@ build_gosu_env_cmd() {
     [ -n "$AWS_REGION" ] && cmd+=("AWS_REGION=$AWS_REGION")
     [ -n "$AWS_DEFAULT_REGION" ] && cmd+=("AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION")
     [ -n "$AWS_PROFILE" ] && cmd+=("AWS_PROFILE=$AWS_PROFILE")
-    
+
     # Pass through Google Cloud settings for Vertex AI
     [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ] && cmd+=("GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS")
     [ -n "$GOOGLE_CLOUD_PROJECT" ] && cmd+=("GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT")
-    
+
     # Pass through Claude Code specific settings
     [ -n "$CLAUDE_CODE_USE_BEDROCK" ] && cmd+=("CLAUDE_CODE_USE_BEDROCK=$CLAUDE_CODE_USE_BEDROCK")
     [ -n "$CLAUDE_CODE_USE_VERTEX" ] && cmd+=("CLAUDE_CODE_USE_VERTEX=$CLAUDE_CODE_USE_VERTEX")
     [ -n "$CLAUDE_CODE_MAX_OUTPUT_TOKENS" ] && cmd+=("CLAUDE_CODE_MAX_OUTPUT_TOKENS=$CLAUDE_CODE_MAX_OUTPUT_TOKENS")
     [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && cmd+=("ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL")
     [ -n "$DISABLE_TELEMETRY" ] && cmd+=("DISABLE_TELEMETRY=$DISABLE_TELEMETRY")
-    
+
     # Add the actual command and its arguments
     cmd+=("$@")
-    
+
     # Execute the command
     exec "${cmd[@]}"
 }
