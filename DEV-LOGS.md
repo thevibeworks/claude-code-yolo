@@ -1,4 +1,98 @@
 # Development Logs
+- Prepend new entries with `## Issue Analysis: YYYY-MM-DD`.
+- We write or explain to the damn point. Be clear, be super concise - no fluff, no hand-holding, no repeating.
+- Minimal markdown markers, no unnecessary formatting, minimal unicode emojis.
+
+## Issue Analysis: 2025-06-22
+
+### [enhancement] Controlled auth directory mounting
+
+**Problem**: Symlinking all /root/* was too broad and risky.
+
+**Better approach**: Explicit, controlled mounts with proper permissions:
+```bash
+# claude.sh mounts:
+~/.claude → /root/.claude          # read-write (auth tokens)
+~/.config → /root/.config:ro       # read-only (XDG tools)
+~/.aws → /root/.aws:ro            # read-only
+~/.ssh → /root/.ssh:ro            # read-only
+~/.gitconfig → /root/.gitconfig:ro # read-only
+
+# docker-entrypoint.sh:
+- Symlinks specific directories to /home/claude
+- Sets XDG_CONFIG_HOME=/root/.config
+- Maintains controlled access list
+```
+
+**Benefits**:
+- ✅ Security: Read-only where appropriate
+- ✅ XDG compliance: Entire .config dir for gh/gcloud/etc
+- ✅ Explicit: Clear what's accessible
+- ✅ Safe: No unexpected file exposure
+
+**Status**: -> **IMPLEMENTED**
+
+### [enhancement-implemented] Consolidate auth options to --auth-with pattern
+
+**Problem**: Auth flags conflict with common conventions (-v for volumes vs Vertex).
+
+**Current mess**:
+- `-c/--claude` → Claude app (OAuth)
+- `-a/--api-key` → Anthropic API
+- `-b/--bedrock` → AWS Bedrock
+- `-v/--vertex` → Google Vertex AI (blocks -v for volumes!)
+
+**Solution**: Single `--auth-with` parameter:
+```bash
+claude.sh --auth-with vertex .     # Explicit auth method
+claude.sh -v ~/.ssh:/root/.ssh .   # -v now free for volumes
+```
+
+**Implementation**:
+1. ✅ Added `--auth-with METHOD` parsing in claude.sh
+2. ✅ Kept old flags for backward compatibility (with deprecation warnings)
+3. ✅ Freed up `-v` for volume mounting (Docker convention)
+4. ✅ Updated claude-yolo to use `-v` instead of `--mount`
+
+**Benefits**:
+- ✅ Follows Docker convention (-v for volumes)
+- ✅ Cleaner, extensible auth interface
+- ✅ No more flag conflicts
+- ✅ Better CLI UX
+
+**Status**: ✅ **IMPLEMENTED**
+
+### [enhancement-implemented] Generalized config mounting
+
+**Problem**: Hardcoding each tool's config mount doesn't scale.
+
+**Root cause**: Mount to /root, run as claude user -> symlink hell.
+
+**Initial Proposal**: Mount entire ~/.config, use XDG standards.
+
+**Implemented Solution**: Added flexible volume mounting via `-v` argument in claude-yolo.
+
+```bash
+# New usage - users can mount any config they need:
+claude-yolo -v ~/.gitconfig:/root/.gitconfig .
+claude-yolo -v ~/.ssh:/root/.ssh:ro .
+claude-yolo -v ~/tools:/tools -v ~/data:/data .
+
+# Implementation in claude-yolo:
+- Parse -v/--mount arguments, collect in array
+- Pass to claude.sh via CLAUDE_EXTRA_VOLUMES env var
+- claude.sh adds these volumes to Docker run command
+```
+
+**Benefits**:
+- ✅ **Flexible**: Mount any config/directory as needed
+- ✅ **Familiar**: Uses Docker's -v syntax
+- ✅ **Secure**: Users control what to expose
+- ✅ **Extensible**: No hardcoded tool list to maintain
+
+**Result**: Zero maintenance. New tools work via explicit mounting.
+
+**Status**: ✅ **IMPLEMENTED** - Added -v/--mount support to claude-yolo
 
 ## Issue Analysis: 2025-06-22
 
@@ -6,7 +100,7 @@
 
 **Problem**: `claude-yolo --trace .` fails to add `--dangerously-skip-permissions` to the claude command.
 
-**Root Cause Found**: 
+**Root Cause Found**:
 - In `claude.sh:562`, when `--trace` is used, the command was incorrectly constructed as:
   ```bash
   claude-trace --include-all-requests --run-with .
@@ -17,11 +111,7 @@
 
 1. **Fixed command construction** in `claude.sh:562`:
    ```bash
-   # Before (broken):
-   DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "${CLAUDE_ARGS[@]}")
-   
-   # After (fixed):
-   DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "claude" "${CLAUDE_ARGS[@]}")
+   claude-trace --include-all-requests --run-with claude .
    ```
 
 2. **Enhanced argument injection** in `docker-entrypoint.sh`:
@@ -36,7 +126,7 @@
        done
    ```
 
-**Result**: 
+**Result**:
 - Input: `claude-yolo --trace .`
 - Command: `claude-trace --include-all-requests --run-with claude .`
 - Executed: `claude-trace --include-all-requests --run-with claude --dangerously-skip-permissions .`
@@ -49,7 +139,7 @@
 
 **Problem**: All dev tools are baked into Dockerfile, requiring full image rebuild for new tools.
 
-**Current State**: 
+**Current State**:
 - Tools installed in Dockerfile:92-117 (gh, delta, claude, claude-trace)
 - Static installation makes customization inflexible
 - Image size grows with every tool added
@@ -103,7 +193,7 @@ Cons: Multiple package manager complexity
 
 **Current Auth State**:
 - ✅ **Claude**: Auto-mounted via `~/.claude` → `/root/.claude` → `/home/claude/.claude` (symlink)
-- ✅ **AWS**: Auto-mounted via `~/.aws` → `/root/.aws` → `/home/claude/.aws` (symlink) 
+- ✅ **AWS**: Auto-mounted via `~/.aws` → `/root/.aws` → `/home/claude/.aws` (symlink)
 - ✅ **Google Cloud**: Auto-mounted via `~/.config/gcloud` → `/root/.config/gcloud` → `/home/claude/.config/gcloud` (symlink)
 - ❌ **GitHub CLI**: Requires manual `gh auth login` or token pasting into `/home/claude/.config/gh/`
 - ❌ **Docker Hub**: No auth mounting for `docker login`
@@ -118,7 +208,7 @@ Cons: Multiple package manager complexity
 ```bash
 # In claude.sh, add more auth directories
 [ -d "$HOME/.config/gh" ] && DOCKER_ARGS+=("-v" "$HOME/.config/gh:/root/.config/gh")
-[ -f "$HOME/.npmrc" ] && DOCKER_ARGS+=("-v" "$HOME/.npmrc:/root/.npmrc") 
+[ -f "$HOME/.npmrc" ] && DOCKER_ARGS+=("-v" "$HOME/.npmrc:/root/.npmrc")
 [ -d "$HOME/.docker" ] && DOCKER_ARGS+=("-v" "$HOME/.docker:/root/.docker")
 [ -d "$HOME/.terraform.d" ] && DOCKER_ARGS+=("-v" "$HOME/.terraform.d:/root/.terraform.d")
 ```
@@ -167,13 +257,13 @@ AUTH_PATHS=(
 
 ---
 
-### [enhancement-resolved] Multiple Claude instances workflow 
+### [enhancement-resolved] Multiple Claude instances workflow
 
 **Original Problem**: Users wanted multiple Claude instances in same project without container name conflicts.
 
 **Original Goal Misunderstanding**: We thought users wanted shared containers, but they actually just wanted **multiple simultaneous instances**.
 
-**Simple Solution Implemented**: 
+**Simple Solution Implemented**:
 - **Reverted to process-based naming**: `claude-code-yolo-${CURRENT_DIR_BASENAME}-$$`
 - **Keep `--rm` for auto-cleanup**: Each instance gets its own container
 - **No complexity needed**: Each process gets unique container name via `$$`
@@ -183,7 +273,7 @@ AUTH_PATHS=(
 # Terminal 1:
 claude-yolo .  # → claude-code-yolo-myproject-12345
 
-# Terminal 2: 
+# Terminal 2:
 claude-yolo .  # → claude-code-yolo-myproject-67890
 
 # Both run simultaneously, both auto-cleanup
@@ -213,7 +303,7 @@ claude-yolo .  # → claude-code-yolo-myproject-67890
 
 **Features Added**:
 - `claude-yolo --inspect`: Auto-find and enter container as claude user
-- `claude-yolo --ps`: List all containers for current project  
+- `claude-yolo --ps`: List all containers for current project
 - **Smart selection**: Auto-select single container, prompt for multiple
 - **Project-aware**: Only shows containers matching current directory pattern
 
@@ -241,7 +331,7 @@ fi
 **Before** (painful):
 ```bash
 docker ps                                    # Find container
-docker exec -it claude-code-yolo-proj-12345 /bin/zsh  # Enter container  
+docker exec -it claude-code-yolo-proj-12345 /bin/zsh  # Enter container
 su - claude                                  # Switch to proper user
 ```
 
@@ -256,7 +346,7 @@ claude-yolo --inspect
 
 Multiple containers found for this project:
   1) claude-code-yolo-myproject-12345 (Up 5 minutes)
-  2) claude-code-yolo-myproject-67890 (Up 2 minutes) 
+  2) claude-code-yolo-myproject-67890 (Up 2 minutes)
 
 Select container to inspect (1-2): 1
 Entering container claude-code-yolo-myproject-12345 as claude user...
@@ -269,68 +359,3 @@ Entering container claude-code-yolo-myproject-12345 as claude user...
 **Status**: ✅ **COMPLETED** - Issue #4 resolved
 
 ---
-
-## Current Implementation Summary
-
-### What We've Built
-
-**Issue #1**: ✅ Fixed `--trace` flag not passing `--dangerously-skip-permissions`
-- **Solution**: Added explicit `claude-trace` detection in `docker-entrypoint.sh:167,182`
-- **Result**: `claude-yolo --trace .` now works correctly in YOLO mode
-
-**Issue #4**: ✅ Added container inspection shortcuts
-- **Solution**: Enhanced `claude-yolo` with `--inspect` and `--ps` commands
-- **Result**: One-command container access with smart multi-container selection
-
-**Multiple Instances**: ✅ Simplified approach for concurrent Claude instances  
-- **Solution**: Reverted to process-based naming `$$` for unique containers
-- **Result**: Multiple `claude-yolo .` commands work simultaneously, auto-cleanup
-
-### Current Architecture
-
-**claude.sh** (578 lines):
-- Main Docker wrapper with authentication, environment setup, and container creation
-- Process-based container naming: `claude-code-yolo-${CURRENT_DIR_BASENAME}-$$`
-- Always uses `--rm` for auto-cleanup
-- Supports 4 auth modes: Claude app, API key, AWS Bedrock, Google Vertex AI
-
-**docker-entrypoint.sh** (194 lines):
-- Container initialization with environment reporting
-- Non-root user setup with proper UID/GID alignment
-- Authentication symlink creation (`/root/.claude` → `/home/claude/.claude`)
-- Fixed pattern matching for Claude commands (including `claude-trace`)
-
-**claude-yolo** (75 lines):
-- Enhanced wrapper with container inspection shortcuts
-- Smart container discovery and selection
-- Simple fallback to `claude.sh --yolo` for normal operations
-
-### Key Design Principles Applied
-
-1. **Simplicity over complexity**: Chose unique container names over shared containers
-2. **User experience focus**: One-command access for common operations
-3. **Pattern matching**: Project-aware container management
-4. **Auto-cleanup**: Containers remove themselves when done
-5. **Smart defaults**: Auto-select single containers, prompt for multiple
-
----
-
-## Technical Details
-
-### File Locations
-- Main wrapper: `claude.sh:559` (YOLO trace command)
-- Entrypoint logic: `docker-entrypoint.sh:167-169, 181-183` (dangerous permissions logic)
-- Tool installation: `Dockerfile:92-117` (static tool setup)
-
-### Key Functions
-- `claude.sh` line 557-562: Trace command construction
-- `docker-entrypoint.sh` line 156-189: Command execution with permission handling
-- `docker-entrypoint.sh` line 11-64: Environment reporting
-
----
-
-## Next Steps
-1. Create GitHub issues for both problems
-2. Implement trace flag fix (simple pattern matching)
-3. Design runtime tool installation system
-4. Consider adding `.claude-tools` config support
