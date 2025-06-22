@@ -1,5 +1,5 @@
 #!/bin/bash
-# Claude YOLO - Quick wrapper for claude.sh --yolo
+# Claude YOLO - Quick wrapper for claude.sh --yolo with container inspection shortcuts
 # Provides safe Docker-based Claude Code execution with full permissions
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,5 +17,80 @@ if [ ! -x "$CLAUDE_SH" ]; then
     exit 1
 fi
 
-# Pass all arguments to claude.sh with --yolo flag
-exec "$CLAUDE_SH" --yolo "$@"
+CURRENT_DIR="$(pwd)"
+CURRENT_DIR_BASENAME="$(basename "$CURRENT_DIR")"
+CONTAINER_PATTERN="claude-code-yolo-${CURRENT_DIR_BASENAME}-"
+
+find_project_containers() {
+    docker ps --filter "name=$CONTAINER_PATTERN" --format "{{.Names}}" 2>/dev/null
+}
+
+inspect_container() {
+    local containers=$(find_project_containers)
+    if [ -z "$containers" ]; then
+        echo "No running containers found for this project"
+        echo "Pattern: $CONTAINER_PATTERN*"
+        exit 1
+    fi
+
+    local container_array=($containers)
+    local num_containers=${#container_array[@]}
+
+    if [ $num_containers -eq 1 ]; then
+        local container="${container_array[0]}"
+        echo "Entering container $container as claude user..."
+        exec docker exec -it "$container" gosu claude /bin/zsh
+    else
+        echo "Multiple containers found for this project:"
+        echo ""
+        for i in "${!container_array[@]}"; do
+            local container="${container_array[$i]}"
+            local status=$(docker ps --filter "name=$container" --format "{{.Status}}")
+            echo "  $((i + 1))) $container ($status)"
+        done
+        echo ""
+        echo -n "Select container to inspect (1-$num_containers): "
+        read -r choice
+
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le $num_containers ]; then
+            local selected_container="${container_array[$((choice - 1))]}"
+            echo "Entering container $selected_container as claude user..."
+            exec docker exec -it "$selected_container" gosu claude /bin/zsh
+        else
+            echo "Invalid selection. Exiting."
+            exit 1
+        fi
+    fi
+}
+
+list_containers() {
+    echo "Containers for this project:"
+    docker ps --filter "name=$CONTAINER_PATTERN" --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
+}
+
+case "$1" in
+--inspect)
+    inspect_container
+    ;;
+--ps)
+    list_containers
+    ;;
+--help | -h)
+    echo "Claude YOLO - Container Shortcuts"
+    echo ""
+    echo "Usage: claude-yolo [options] [claude-arguments...]"
+    echo ""
+    echo "Container Inspection:"
+    echo "  --inspect     Enter running container as claude user"
+    echo "  --ps          List containers for this project"
+    echo ""
+    echo "Examples:"
+    echo "  claude-yolo .          # Run Claude in YOLO mode"
+    echo "  claude-yolo --inspect  # Quick access to running container"
+    echo "  claude-yolo --ps       # See project containers"
+    exit 0
+    ;;
+*)
+    exec "$CLAUDE_SH" --yolo "$@"
+    ;;
+esac

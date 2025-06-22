@@ -89,6 +89,19 @@ RUN --mount=type=cache,target=/tmp/aws-cache,sharing=locked \
 
 FROM cloud-tools AS tools
 
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    type -p wget >/dev/null || (apt-get update && apt-get install -y wget) && \
+    mkdir -p -m 755 /etc/apt/keyrings && \
+    wget -nv -O /tmp/githubcli-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg && \
+    cat /tmp/githubcli-keyring.gpg > /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+    mkdir -p -m 755 /etc/apt/sources.list.d && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && \
+    apt-get install -y gh && \
+    rm -f /tmp/githubcli-keyring.gpg
+
 RUN --mount=type=cache,target=/tmp/delta-cache,sharing=locked \
     ARCH=$(dpkg --print-architecture) && \
     DELTA_ARCH=$([ "$ARCH" = "amd64" ] && echo "x86_64" || echo "aarch64") && \
