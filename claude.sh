@@ -645,7 +645,7 @@ if [ "$OPEN_SHELL" = true ]; then
     DOCKER_ARGS+=("/bin/zsh")
 elif [ "$USE_TRACE" = true ]; then
     echo "Using claude-trace for logging"
-    DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "claude" "${CLAUDE_ARGS[@]}")
+    DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "${CLAUDE_ARGS[@]}")
 else
     DOCKER_ARGS+=("claude" "${CLAUDE_ARGS[@]}")
 fi

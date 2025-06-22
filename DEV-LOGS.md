@@ -5,6 +5,47 @@
 
 ## Issue Analysis: 2025-06-22
 
+### [bug-critical] Argument parsing infinite loop in claude-yolo
+
+**Problem**: Cursor bot detected critical bugs in claude-yolo argument parsing.
+
+**Root Cause Analysis**:
+
+**Bug 1 - Infinite Loop**: Lines 84-89 in parse_args() missing `shift` statements:
+```bash
+--inspect)
+    inspect_container  # ❌ Missing shift - infinite loop
+;;
+--ps)
+    list_containers   # ❌ Missing shift - infinite loop
+;;
+```
+
+**Bug 2 - Duplicate Handling**: Lines 122-137 duplicate parse_args() logic:
+```bash
+# Main script also handles --inspect/--ps directly
+case "$1" in
+--inspect) inspect_container ;;  # ❌ Duplicate of parse_args
+--ps) list_containers ;;         # ❌ Duplicate + no exit
+```
+
+**Impact**:
+- Infinite loop when using `--inspect` or `--ps`
+- `--ps` shows containers but continues to exec claude.sh
+- Mixed options like `claude-yolo --inspect -v ~/foo:/bar` silently ignore -v
+- Inconsistent behavior between direct calls and mixed arguments
+
+**Technical Details**:
+- **Flow Issue**: parse_args() calls inspect_container() → exits, but missing shift causes loop
+- **Design Flaw**: Two separate parsing paths with different behaviors
+- **Silent Failures**: Some argument combinations work, others don't
+
+**Status**: Critical - requires immediate fix
+
+---
+
+## Issue Analysis: 2025-06-22
+
 ### [problem-discovered] GitHub CLI auth fails in containers
 
 **Problem**: Mounting `~/.config/gh/` doesn't work for GitHub CLI authentication in containers.

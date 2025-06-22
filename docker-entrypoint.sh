@@ -224,19 +224,24 @@ main() {
                 build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@" --dangerously-skip-permissions
             elif [ "$cmd" = "claude-trace" ]; then
                 echo "Executing Claude-trace as $CLAUDE_USER with YOLO powers: $cmd $@"
-                # claude-trace --include-all-requests --run-with claude [args]
-                # We need to inject --dangerously-skip-permissions into the claude command
+                # claude-trace --include-all-requests --run-with [args]
+                # We need to inject --dangerously-skip-permissions into the claude arguments
                 args=("$@")
                 new_args=()
                 i=0
+                inject_next=false
                 while [ $i -lt ${#args[@]} ]; do
-                    if [ "${args[$i]}" = "--run-with" ] && [ $((i + 1)) -lt ${#args[@]} ] && [ "${args[$((i + 1))]}" = "claude" ]; then
-                        new_args+=("--run-with" "claude" "--dangerously-skip-permissions")
-                        i=$((i + 2))
+                    if [ "${args[$i]}" = "--run-with" ]; then
+                        new_args+=("--run-with")
+                        inject_next=true
+                    elif [ "$inject_next" = true ]; then
+                        # First argument after --run-with gets --dangerously-skip-permissions added
+                        new_args+=("${args[$i]}" "--dangerously-skip-permissions")
+                        inject_next=false
                     else
                         new_args+=("${args[$i]}")
-                        i=$((i + 1))
                     fi
+                    i=$((i + 1))
                 done
                 build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "${new_args[@]}"
             else
@@ -255,19 +260,24 @@ main() {
                 exec "$@" --dangerously-skip-permissions
             elif [ "$cmd" = "claude-trace" ]; then
                 echo "Executing Claude-trace in root mode with YOLO powers: $@"
-                # claude-trace --include-all-requests --run-with claude [args]
-                # We need to inject --dangerously-skip-permissions into the claude command
+                # claude-trace --include-all-requests --run-with [args]
+                # We need to inject --dangerously-skip-permissions into the claude arguments
                 args=("$@")
                 new_args=()
                 i=1 # Skip first arg (claude-trace)
+                inject_next=false
                 while [ $i -lt ${#args[@]} ]; do
-                    if [ "${args[$i]}" = "--run-with" ] && [ $((i + 1)) -lt ${#args[@]} ] && [ "${args[$((i + 1))]}" = "claude" ]; then
-                        new_args+=("--run-with" "claude" "--dangerously-skip-permissions")
-                        i=$((i + 2))
+                    if [ "${args[$i]}" = "--run-with" ]; then
+                        new_args+=("--run-with")
+                        inject_next=true
+                    elif [ "$inject_next" = true ]; then
+                        # First argument after --run-with gets --dangerously-skip-permissions added
+                        new_args+=("${args[$i]}" "--dangerously-skip-permissions")
+                        inject_next=false
                     else
                         new_args+=("${args[$i]}")
-                        i=$((i + 1))
                     fi
+                    i=$((i + 1))
                 done
                 exec "$cmd" "${new_args[@]}"
             else
