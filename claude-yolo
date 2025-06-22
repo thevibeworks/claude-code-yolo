@@ -68,6 +68,58 @@ list_containers() {
     docker ps --filter "name=$CONTAINER_PATTERN" --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
 }
 
+parse_args() {
+    local claude_args=()
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        -v)
+            if [ -z "$2" ]; then
+                echo "Error: -v requires an argument" >&2
+                exit 1
+            fi
+            claude_args+=("-v" "$2")
+            shift 2
+            ;;
+        --inspect)
+            inspect_container
+            ;;
+        --ps)
+            list_containers
+            ;;
+        --help | -h)
+            echo "Claude YOLO - Container Shortcuts"
+            echo ""
+            echo "Usage: claude-yolo [options] [claude-arguments...]"
+            echo ""
+            echo "Container Inspection:"
+            echo "  --inspect     Enter running container as claude user"
+            echo "  --ps          List containers for this project"
+            echo ""
+            echo "Volume Mounting:"
+            echo "  -v            Mount volume (Docker syntax: source:target[:options])"
+            echo "                Can be used multiple times"
+            echo ""
+            echo "Examples:"
+            echo "  claude-yolo .                                # Run Claude in YOLO mode"
+            echo "  claude-yolo --inspect                        # Quick access to running container"
+            echo "  claude-yolo --ps                             # See project containers"
+            echo "  claude-yolo -v ~/.gitconfig:/root/.gitconfig .      # Mount git config"
+            echo "  claude-yolo -v ~/.ssh:/root/.ssh:ro .               # Mount SSH keys read-only"
+            echo "  claude-yolo -v ~/tools:/tools -v ~/data:/data .     # Multiple mounts"
+            exit 0
+            ;;
+        *)
+            claude_args+=("$1")
+            shift
+            ;;
+        esac
+    done
+
+    exec "$CLAUDE_SH" --yolo "${claude_args[@]}"
+}
+
+# Handle special shortcuts first
 case "$1" in
 --inspect)
     inspect_container
@@ -76,21 +128,10 @@ case "$1" in
     list_containers
     ;;
 --help | -h)
-    echo "Claude YOLO - Container Shortcuts"
-    echo ""
-    echo "Usage: claude-yolo [options] [claude-arguments...]"
-    echo ""
-    echo "Container Inspection:"
-    echo "  --inspect     Enter running container as claude user"
-    echo "  --ps          List containers for this project"
-    echo ""
-    echo "Examples:"
-    echo "  claude-yolo .          # Run Claude in YOLO mode"
-    echo "  claude-yolo --inspect  # Quick access to running container"
-    echo "  claude-yolo --ps       # See project containers"
-    exit 0
+    # Will be handled by parse_args
+    parse_args "$@"
     ;;
 *)
-    exec "$CLAUDE_SH" --yolo "$@"
+    parse_args "$@"
     ;;
 esac

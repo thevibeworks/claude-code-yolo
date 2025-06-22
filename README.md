@@ -47,18 +47,56 @@ claude-yolo .                       # Run in current directory
 # Using claude.sh for more control
 claude.sh --yolo .                  # YOLO mode
 claude.sh .                         # Local mode (no Docker)
-claude.sh -a .                      # Use API key
-claude.sh -b .                      # Use AWS Bedrock
+claude.sh --auth-with api-key .     # Use API key
+claude.sh --auth-with bedrock .     # Use AWS Bedrock
+claude.sh --auth-with vertex .      # Use Google Vertex AI
 claude.sh --shell                   # Open shell in container
 claude.sh --help                    # Show all options
 ```
 
 ## Authentication Methods
 
-- **Claude App** (default): Uses `~/.claude` OAuth
-- **API Key** (`-a`): Set `ANTHROPIC_API_KEY` environment variable
-- **AWS Bedrock** (`-b`): Uses `~/.aws` credentials
-- **Google Vertex** (`-v`): Uses `~/.config/gcloud` credentials
+- **Claude App** (default): Uses `~/.claude` OAuth - `--auth-with claude`
+- **API Key**: Set `ANTHROPIC_API_KEY` environment variable - `--auth-with api-key`
+  - If OAuth exists, use `/login` in Claude to switch to API key auth
+- **AWS Bedrock**: Uses `~/.aws` credentials - `--auth-with bedrock`
+- **Google Vertex**: Uses `~/.config/gcloud` credentials - `--auth-with vertex`
+
+## GitHub CLI Authentication
+
+For GitHub operations (creating PRs, managing repos), set the `GH_TOKEN` environment variable:
+
+```bash
+# Set your GitHub token
+export GH_TOKEN="ghp_xxxxxxxxxxxx"
+
+# Now gh commands work in containers
+claude-yolo .
+# Inside container: gh pr create, gh issue list, etc.
+```
+
+**Note**: This avoids mounting `~/.config/gh/` which fails due to secure keyring storage in modern GitHub CLI versions.
+
+## Custom Volume Mounting
+
+You can mount additional configuration files or directories using the `-v` flag:
+
+```bash
+# Mount Git configuration
+claude-yolo -v ~/.gitconfig:/root/.gitconfig .
+
+# Mount SSH keys (read-only)
+claude-yolo -v ~/.ssh:/root/.ssh:ro .
+
+# Multiple mounts
+claude-yolo -v ~/tools:/tools -v ~/data:/data .
+
+# Mount custom tool configs
+claude-yolo -v ~/.config/gh:/root/.config/gh .
+claude-yolo -v ~/.terraform.d:/root/.terraform.d .
+```
+
+**Note**: Volumes mounted to `/root/*` are automatically symlinked to `/home/claude/*` for non-root user access.
 
 ## Key Features
 
@@ -88,3 +126,4 @@ make build
 - **[meal/claude-code-cli](https://github.com/meal/claude-code-cli)** - Containerized Claude Code with ready-to-use Docker setup
 - **[gagarinyury/claude-code-root-runner](https://github.com/gagarinyury/claude-code-root-runner)** - Root privilege bypass for Claude Code using temporary users
 - **[textcortex/claude-code-sandbox](https://github.com/textcortex/claude-code-sandbox)** - Full sandbox environment with web UI and autonomous workflows
+

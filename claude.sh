@@ -1,10 +1,11 @@
 #!/bin/bash
+set -e
 
 # Claude Starter Script with Docker Support
 # Runs Claude Code CLI locally or in a Docker container for safe execution
 
-DOCKER_IMAGE="lroolle/claude-code-yolo"
-DOCKER_TAG="${CLAUDE_YOLO_TAG:-latest}"
+DOCKER_IMAGE="${DOCKER_IMAGE:-lroolle/claude-code-yolo}"
+DOCKER_TAG="${DOCKER_TAG:-latest}"
 
 DEFAULT_ANTHROPIC_MODEL="sonnet-4"
 DEFAULT_ANTHROPIC_SMALL_FAST_MODEL="haiku-3-5"
@@ -13,9 +14,11 @@ DEFAULT_AWS_REGION="us-west-2"
 USE_DOCKER="${CLAUDE_YOLO_DOCKER:-false}"
 
 show_help() {
-    echo "Claude Starter Script"
+    echo "Claude Code YOLO Wrapper - Run Claude CLI with flexible authentication and safe YOLO."
     echo ""
     echo "Usage: $0 [options] [claude-arguments...]"
+    echo ""
+    echo "This script runs Claude CLI either locally or in a Docker container with YOLO mode."
     echo ""
     echo "Options:"
     echo "  --trace                     Use claude-trace for logging"
@@ -23,19 +26,29 @@ show_help() {
     echo "  --yolo                      YOLO mode: Run Claude in Docker (safe but powerful)"
     echo "  --shell                     Open a shell in the Docker container"
     echo ""
-    echo "Authentication Options (choose one):"
-    echo "  --claude, -c                Use Claude app authentication (OAuth)"
+    echo "Authentication Options:"
+    echo "  --auth-with METHOD          Set authentication method:"
+    echo "                              claude    - Claude app authentication (OAuth) [default]"
+    echo "                              api-key   - Anthropic API key"
+    echo "                              bedrock   - AWS Bedrock"
+    echo "                              vertex    - Google Vertex AI"
+    echo ""
+    echo "  Auth flags (shortcuts):"
+    echo "  --claude, -c                Use Claude app authentication"
     echo "  --api-key, -a               Use Anthropic API key"
     echo "  --bedrock, -b               Use AWS Bedrock"
-    echo "  --vertex, -v                Use Google Vertex AI"
-    echo "  (default: --claude)"
+    echo "  --vertex                    Use Google Vertex AI"
+    echo ""
+    echo "Volume Mounting (Docker mode only):"
+    echo "  -v SOURCE:TARGET[:OPTIONS]  Mount volume (Docker syntax)"
+    echo "                              Can be used multiple times"
     echo ""
     echo "Environment Variables:"
     echo "  ANTHROPIC_MODEL             Claude model (default: $DEFAULT_ANTHROPIC_MODEL)"
     echo "  ANTHROPIC_SMALL_FAST_MODEL  Fast model (default: $DEFAULT_ANTHROPIC_SMALL_FAST_MODEL)"
-    echo "  AWS_PROFILE_ID              AWS account ID (required for --bedrock)"
+    echo "  AWS_PROFILE_ID              AWS account ID (required for bedrock)"
     echo "  AWS_REGION                  AWS region (default: $DEFAULT_AWS_REGION)"
-    echo "  ANTHROPIC_API_KEY           Anthropic API key (required for --api-key)"
+    echo "  ANTHROPIC_API_KEY           Anthropic API key (required for api-key)"
     echo "  HTTP_PROXY                  HTTP proxy"
     echo "  HTTPS_PROXY                 HTTPS proxy"
     echo "  CLAUDE_YOLO_DOCKER          Set to 'true' to always use Docker mode"
@@ -46,20 +59,22 @@ show_help() {
     echo "  CLAUDE_CODE_USE_VERTEX      Use Google Vertex AI"
     echo "  DISABLE_TELEMETRY           Disable Claude Code telemetry"
     echo "  CLAUDE_YOLO_DOCKER_SOCKET   Mount Docker socket (default: false, set to 'true' to enable)"
+    echo "  CLAUDE_EXTRA_VOLUMES        Extra volumes to mount in the container"
+    echo "  GH_TOKEN                    GitHub CLI authentication token"
+    echo "  GITHUB_TOKEN                GitHub CLI authentication token (alternative)"
     echo ""
     echo "Available models: sonnet-4, opus-4, sonnet-3-7, sonnet-3-5, haiku-3-5, sonnet-3, opus-3, haiku-3, deepseek-r1"
     echo ""
     echo "Examples:"
     echo "  $0 .                                          # Claude app auth (default)"
-    echo "  $0 -a .                                       # Use API key (short alias)"
-    echo "  $0 --api-key .                                # Use API key (long form)"
-    echo "  $0 -b .                                       # Use AWS Bedrock (short alias)"
-    echo "  $0 -v .                                       # Use Google Vertex AI"
+    echo "  $0 --auth-with api-key .                      # Use API key"
+    echo "  $0 --auth-with bedrock .                      # Use AWS Bedrock"
+    echo "  $0 --auth-with vertex .                       # Use Google Vertex AI"
     echo "  $0 --yolo .                                   # YOLO mode with default auth"
-    echo "  $0 --yolo -b .                                # YOLO mode with Bedrock"
-    echo "  $0 --yolo -v .                                # YOLO mode with Vertex AI"
-    echo "  $0 --yolo .                                   # Auto-matches your host user ID"
-    echo "  ANTHROPIC_MODEL=opus-4 $0 -c .                # Use Opus 4 with Claude auth"
+    echo "  $0 --yolo --auth-with bedrock .               # YOLO mode with Bedrock"
+    echo "  $0 --yolo -v ~/.ssh:/root/.ssh:ro .           # YOLO mode with volume mount"
+    echo "  ANTHROPIC_MODEL=opus-4 $0 .                   # Use Opus 4 with default auth"
+    echo "  GH_TOKEN=ghp_xxx $0 --yolo .                  # YOLO mode with GitHub CLI auth"
     echo ""
 }
 
@@ -100,9 +115,12 @@ USE_TRACE=false
 CLAUDE_ARGS=()
 OPEN_SHELL=false
 AUTH_MODE="claude"
-USE_NONROOT=true # YOLO mode always uses non-root for safety
+EXTRA_VOLUMES=()
 
-for arg in "$@"; do
+i=0
+args=("$@")
+while [ $i -lt ${#args[@]} ]; do
+    arg="${args[$i]}"
     case $arg in
     --help | -h)
         show_help
@@ -110,28 +128,65 @@ for arg in "$@"; do
         ;;
     --trace)
         USE_TRACE=true
+        i=$((i + 1))
         ;;
     --yolo)
         USE_DOCKER=true
+        i=$((i + 1))
+        ;;
+    --auth-with)
+        if [ $((i + 1)) -lt ${#args[@]} ]; then
+            next_arg="${args[$((i + 1))]}"
+            case "$next_arg" in
+            claude | api-key | bedrock | vertex)
+                AUTH_MODE="$next_arg"
+                i=$((i + 2))
+                ;;
+            *)
+                echo "error: Invalid auth method: $next_arg" >&2
+                echo "Valid methods: claude, api-key, bedrock, vertex" >&2
+                exit 1
+                ;;
+            esac
+        else
+            echo "error: --auth-with requires an argument" >&2
+            exit 1
+        fi
         ;;
     --claude | -c)
         AUTH_MODE="claude"
+        i=$((i + 1))
         ;;
     --api-key | -a)
         AUTH_MODE="api-key"
+        i=$((i + 1))
         ;;
     --bedrock | -b)
         AUTH_MODE="bedrock"
+        i=$((i + 1))
         ;;
-    --vertex | -v)
+    --vertex)
         AUTH_MODE="vertex"
+        i=$((i + 1))
+        ;;
+    -v)
+        # Volume mounting (only in Docker mode)
+        if [ $((i + 1)) -lt ${#args[@]} ]; then
+            EXTRA_VOLUMES+=("-v" "${args[$((i + 1))]}")
+            i=$((i + 2))
+        else
+            echo "error: -v requires an argument" >&2
+            exit 1
+        fi
         ;;
     --shell)
         OPEN_SHELL=true
         USE_DOCKER=true
+        i=$((i + 1))
         ;;
     *)
         CLAUDE_ARGS+=("$arg")
+        i=$((i + 1))
         ;;
     esac
 done
@@ -141,7 +196,8 @@ run_claude_local() {
     CLAUDE_TRACE_PATH="claude-trace"
 
     if [ ! -x "$CLAUDE_PATH" ]; then
-        echo "[claude.sh] error: Claude executable not found or not migrated, or run $(claude migrate-installer) to migrate claude to local first: $CLAUDE_PATH" >&2
+        echo "[claude.sh] error: Claude executable not found at: $CLAUDE_PATH" >&2
+        echo "[claude.sh] try running 'claude migrate-installer' to migrate claude to local" >&2
         CLAUDE_FALLBACK="$HOME/.claude/local/claude"
         if [ -x "$CLAUDE_FALLBACK" ]; then
             echo "[claude.sh] trying fallback wrapper script: $CLAUDE_FALLBACK" >&2
@@ -354,6 +410,7 @@ DOCKER_ARGS+=(
 
 )
 
+# Essential mounts for Claude
 if [ -d "$HOME/.claude" ]; then
     DOCKER_ARGS+=("-v" "$HOME/.claude:/root/.claude")
 fi
@@ -367,14 +424,31 @@ if [ -d "${CURRENT_DIR}/.claude" ]; then
     DOCKER_ARGS+=("-v" "${CURRENT_DIR}/.claude:${CURRENT_DIR}/.claude")
 fi
 
+
+# Mount for AWS bedrock api
 if [ -d "$HOME/.aws" ]; then
-    DOCKER_ARGS+=("-v" "$HOME/.aws:/root/.aws")
+    DOCKER_ARGS+=("-v" "$HOME/.aws:/root/.aws:ro")
 fi
+
+# Users can mount additional configs with -v flag
+# Examples: -v ~/.ssh:/root/.ssh:ro -v ~/.gitconfig:/root/.gitconfig:ro
 
 # Only mount Docker socket if explicitly enabled
 if [ "${CLAUDE_YOLO_DOCKER_SOCKET:-false}" = "true" ] && [ -S /var/run/docker.sock ]; then
     echo "warning: Docker socket mounted - container has full Docker control"
     DOCKER_ARGS+=("-v" "/var/run/docker.sock:/var/run/docker.sock")
+fi
+
+if [ ${#EXTRA_VOLUMES[@]} -gt 0 ]; then
+    echo "Adding extra volumes:"
+    for volume in "${EXTRA_VOLUMES[@]}"; do
+        if [ "$volume" != "-v" ]; then
+            echo "  $volume"
+            DOCKER_ARGS+=("-v" "$volume")
+        fi
+    done
+    CLAUDE_EXTRA_VOLUMES="${EXTRA_VOLUMES[*]}"
+    DOCKER_ARGS+=("-e" "CLAUDE_EXTRA_VOLUMES=$CLAUDE_EXTRA_VOLUMES")
 fi
 
 # Pass proxy environment variables, translating localhost/127.0.0.1 to host.docker.internal
@@ -399,7 +473,15 @@ fi
 
 DOCKER_ARGS+=("--add-host" "host.docker.internal:host-gateway")
 
-# Pass other common environment variables
+# Pass timezone - auto-detect if not set
+if [ -z "$TZ" ]; then
+    if [ -f /etc/localtime ] && command -v readlink >/dev/null 2>&1; then
+        DETECTED_TZ=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')
+        [ -n "$DETECTED_TZ" ] && TZ="$DETECTED_TZ"
+    elif [ -f /etc/timezone ]; then
+        TZ=$(cat /etc/timezone)
+    fi
+fi
 [ -n "$TZ" ] && DOCKER_ARGS+=("-e" "TZ=$TZ")
 [ -n "$LANG" ] && DOCKER_ARGS+=("-e" "LANG=$LANG")
 [ -n "$LANGUAGE" ] && DOCKER_ARGS+=("-e" "LANGUAGE=$LANGUAGE")
@@ -413,6 +495,10 @@ DOCKER_ARGS+=("--add-host" "host.docker.internal:host-gateway")
 [ -n "$GIT_AUTHOR_EMAIL" ] && DOCKER_ARGS+=("-e" "GIT_AUTHOR_EMAIL=$GIT_AUTHOR_EMAIL")
 [ -n "$GIT_COMMITTER_NAME" ] && DOCKER_ARGS+=("-e" "GIT_COMMITTER_NAME=$GIT_COMMITTER_NAME")
 [ -n "$GIT_COMMITTER_EMAIL" ] && DOCKER_ARGS+=("-e" "GIT_COMMITTER_EMAIL=$GIT_COMMITTER_EMAIL")
+
+# Pass GitHub CLI authentication
+[ -n "$GH_TOKEN" ] && DOCKER_ARGS+=("-e" "GH_TOKEN=$GH_TOKEN")
+[ -n "$GITHUB_TOKEN" ] && DOCKER_ARGS+=("-e" "GITHUB_TOKEN=$GITHUB_TOKEN")
 
 # Pass Node.js development variables
 [ -n "$NODE_ENV" ] && DOCKER_ARGS+=("-e" "NODE_ENV=$NODE_ENV")
