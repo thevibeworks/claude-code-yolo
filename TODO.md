@@ -1,33 +1,15 @@
 # Claude Code YOLO - TODO List
 
-## Release v0.1.0
-- [X] Push images and source code
-- [X] Docs, `install.sh`
+## High Priority
+- [ ] Issue #1: Fix --trace not passing --dangerously-skip-permissions
+- [ ] Issue #4: Add container shortcuts to claude-yolo 
+- [ ] Issue #3: Consistent auth mounting for dev tools
+- [ ] Issue #2: Flexible dev tool installation
 
-## Next Up (GitHub Actions & CI)
-- [ ] **GitHub Actions Pipeline**
-  - Add shellcheck linting for all bash scripts
-  - Add hadolint for Dockerfile linting
-  - Add automated build and multi-arch support (amd64/arm64)
-  - Add basic integration tests
-
-## Script Code Quality (After CI)
-- [ ] **Refactor claude.sh** (550+ LOC is too much)
-  - Split into modules: arg-parse, auth-env, docker-args
-  - Extract proxy translation logic into reusable function
-  - Extract model alias conversion tables to separate file
-  - Add unit tests for argument parsing
-
-## Image Optimization (When Time Permits)
-- [ ] **Dockerfile Cleanup**
-  - Remove duplicate Oh-My-Zsh installation
-  - Clean apt cache in final stage (`rm -rf /var/lib/apt/lists/*`)
-  - Fix `make clean` to be less aggressive
-
-## Known Bugs to Track
-- [ ] UID/GID alignment between Dockerfile (1001) and claude.sh (host user)
-- [ ] Model alias conversion inconsistency in Docker mode
-- [ ] Path resolution issues in docker-entrypoint.sh
+## Medium Priority
+- [ ] Refactor claude.sh (570+ LOC)
+- [ ] GitHub Actions CI/CD pipeline
+- [ ] Dockerfile cleanup
 
 ---
 

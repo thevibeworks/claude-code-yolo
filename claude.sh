@@ -246,7 +246,7 @@ run_claude_local() {
         if command -v "$CLAUDE_TRACE_PATH" >/dev/null 2>&1; then
             echo "Using claude-trace for logging"
             CLAUDE_CMD="$CLAUDE_TRACE_PATH"
-            FINAL_ARGS=("--include-all-requests" "--run-with" "${CLAUDE_ARGS[@]}")
+            FINAL_ARGS=("--include-all-requests" "--run-with" "claude" "${CLAUDE_ARGS[@]}")
         else
             echo "error: claude-trace not found but --trace was requested" >&2
             echo "install claude-trace with: npm install -g @mariozechner/claude-trace" >&2
@@ -342,6 +342,9 @@ DOCKER_ARGS=(
     "--rm"
     "-it"
     "--name" "$CONTAINER_NAME"
+)
+
+DOCKER_ARGS+=(
 
     # Mount current directory at same path
     "-v" "${CURRENT_DIR}:${CURRENT_DIR}"
@@ -556,7 +559,7 @@ if [ "$OPEN_SHELL" = true ]; then
     DOCKER_ARGS+=("/bin/zsh")
 elif [ "$USE_TRACE" = true ]; then
     echo "Using claude-trace for logging"
-    DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "${CLAUDE_ARGS[@]}")
+    DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "claude" "${CLAUDE_ARGS[@]}")
 else
     DOCKER_ARGS+=("claude" "${CLAUDE_ARGS[@]}")
 fi
