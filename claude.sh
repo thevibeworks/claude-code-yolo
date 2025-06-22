@@ -60,6 +60,8 @@ show_help() {
     echo "  DISABLE_TELEMETRY           Disable Claude Code telemetry"
     echo "  CLAUDE_YOLO_DOCKER_SOCKET   Mount Docker socket (default: false, set to 'true' to enable)"
     echo "  CLAUDE_EXTRA_VOLUMES        Extra volumes to mount in the container"
+    echo "  GH_TOKEN                    GitHub CLI authentication token"
+    echo "  GITHUB_TOKEN                GitHub CLI authentication token (alternative)"
     echo ""
     echo "Available models: sonnet-4, opus-4, sonnet-3-7, sonnet-3-5, haiku-3-5, sonnet-3, opus-3, haiku-3, deepseek-r1"
     echo ""
@@ -72,6 +74,7 @@ show_help() {
     echo "  $0 --yolo --auth-with bedrock .               # YOLO mode with Bedrock"
     echo "  $0 --yolo -v ~/.ssh:/root/.ssh:ro .           # YOLO mode with volume mount"
     echo "  ANTHROPIC_MODEL=opus-4 $0 .                   # Use Opus 4 with default auth"
+    echo "  GH_TOKEN=ghp_xxx $0 --yolo .                  # YOLO mode with GitHub CLI auth"
     echo ""
 }
 
@@ -421,10 +424,6 @@ if [ -d "${CURRENT_DIR}/.claude" ]; then
     DOCKER_ARGS+=("-v" "${CURRENT_DIR}/.claude:${CURRENT_DIR}/.claude")
 fi
 
-# Mount .config directory for XDG-compliant tools (gh, gcloud, git, etc.)
-if [ -d "$HOME/.config" ]; then
-    DOCKER_ARGS+=("-v" "$HOME/.config:/root/.config:ro")
-fi
 
 # Mount for AWS bedrock api
 if [ -d "$HOME/.aws" ]; then
@@ -496,6 +495,10 @@ fi
 [ -n "$GIT_AUTHOR_EMAIL" ] && DOCKER_ARGS+=("-e" "GIT_AUTHOR_EMAIL=$GIT_AUTHOR_EMAIL")
 [ -n "$GIT_COMMITTER_NAME" ] && DOCKER_ARGS+=("-e" "GIT_COMMITTER_NAME=$GIT_COMMITTER_NAME")
 [ -n "$GIT_COMMITTER_EMAIL" ] && DOCKER_ARGS+=("-e" "GIT_COMMITTER_EMAIL=$GIT_COMMITTER_EMAIL")
+
+# Pass GitHub CLI authentication
+[ -n "$GH_TOKEN" ] && DOCKER_ARGS+=("-e" "GH_TOKEN=$GH_TOKEN")
+[ -n "$GITHUB_TOKEN" ] && DOCKER_ARGS+=("-e" "GITHUB_TOKEN=$GITHUB_TOKEN")
 
 # Pass Node.js development variables
 [ -n "$NODE_ENV" ] && DOCKER_ARGS+=("-e" "NODE_ENV=$NODE_ENV")
@@ -608,7 +611,9 @@ case "$AUTH_MODE" in
     if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ] && [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
         DOCKER_ARGS+=("-v" "$GOOGLE_APPLICATION_CREDENTIALS:$GOOGLE_APPLICATION_CREDENTIALS")
     fi
-    # .config/gcloud is already mounted via the general .config mount above
+    if [ -d "$HOME/.config/gcloud" ]; then
+        DOCKER_ARGS+=("-v" "$HOME/.config/gcloud:/root/.config/gcloud")
+    fi
 
     echo "Main model: $ANTHROPIC_MODEL"
     echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"

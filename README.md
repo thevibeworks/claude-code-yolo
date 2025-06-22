@@ -62,6 +62,21 @@ claude.sh --help                    # Show all options
 - **AWS Bedrock**: Uses `~/.aws` credentials - `--auth-with bedrock`
 - **Google Vertex**: Uses `~/.config/gcloud` credentials - `--auth-with vertex`
 
+## GitHub CLI Authentication
+
+For GitHub operations (creating PRs, managing repos), set the `GH_TOKEN` environment variable:
+
+```bash
+# Set your GitHub token
+export GH_TOKEN="ghp_xxxxxxxxxxxx"
+
+# Now gh commands work in containers
+claude-yolo .
+# Inside container: gh pr create, gh issue list, etc.
+```
+
+**Note**: This avoids mounting `~/.config/gh/` which fails due to secure keyring storage in modern GitHub CLI versions.
+
 ## Custom Volume Mounting
 
 You can mount additional configuration files or directories using the `-v` flag:

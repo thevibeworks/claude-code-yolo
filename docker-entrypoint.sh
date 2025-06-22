@@ -102,11 +102,12 @@ setup_nonroot_user() {
         ln -sfn /root/.claude.json "$CLAUDE_HOME/.claude.json"
     fi
 
-    # Essential: Handle .config directory (XDG - includes git, gh, gcloud, etc.)
-    if [ -d "/root/.config" ]; then
-        echo "[entrypoint] linking .config directory"
-        chmod -R 755 /root/.config 2>/dev/null || true
-        ln -sfn /root/.config "$CLAUDE_HOME/.config"
+    # Essential: Handle .config/gcloud directory for Google Vertex AI
+    if [ -d "/root/.config/gcloud" ]; then
+        echo "[entrypoint] linking .config/gcloud"
+        mkdir -p "$CLAUDE_HOME/.config"
+        chmod -R 755 /root/.config/gcloud 2>/dev/null || true
+        ln -sfn /root/.config/gcloud "$CLAUDE_HOME/.config/gcloud"
     fi
 
     # Common: AWS credentials

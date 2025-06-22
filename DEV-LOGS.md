@@ -5,6 +5,44 @@
 
 ## Issue Analysis: 2025-06-22
 
+### [problem-discovered] GitHub CLI auth fails in containers
+
+**Problem**: Mounting `~/.config/gh/` doesn't work for GitHub CLI authentication in containers.
+
+**Root Cause**: Modern `gh` uses secure keyring storage instead of plain text files:
+- **Host**: Tokens stored in macOS Keychain/Linux Secret Service/Windows Credential Manager
+- **Container**: No keyring access, auth fails even with mounted config directory
+- **Split State**: Config files present but tokens inaccessible
+
+**Technical Details**:
+```bash
+# Host auth state:
+~/.config/gh/config.yml     # Configuration
+~/.config/gh/hosts.yml      # May contain tokens OR keyring references
+System Keyring              # Actual tokens (secure storage)
+
+# Container reality:
+/root/.config/gh/config.yml # ✅ Mounted successfully
+/root/.config/gh/hosts.yml  # ✅ Mounted but may reference unavailable keyring
+No System Keyring          # ❌ DBus/keyring services not available
+```
+
+**Why This Matters**: Current codebase has complete auth system for Claude/AWS/GCloud but GitHub CLI missing.
+
+**Immediate Impact**: Cannot create PRs or manage GitHub repos from within containers.
+
+**Solutions Research**:
+1. **Environment Variable**: `GH_TOKEN="ghp_xxx"` - simple, headless-friendly
+2. **Insecure Storage**: `gh auth login --insecure-storage` on host, then mount works
+3. **Token Injection**: `echo $TOKEN | gh auth login --with-token` in container
+4. **Mount Strategy**: Add explicit GitHub CLI auth mounting to claude.sh
+
+**Status**: Research complete, need implementation decision.
+
+---
+
+## Issue Analysis: 2025-06-22
+
 ### [enhancement] Controlled auth directory mounting
 
 **Problem**: Symlinking all /root/* was too broad and risky.
