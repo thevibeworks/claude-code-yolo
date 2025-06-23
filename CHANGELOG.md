@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Unified logging system for improved UX
+- Clean output by default showing only authentication method
+- Verbose mode displays model selection, proxy configuration, and debug info
+
 ### Fixed
 - Argument parsing infinite loop in claude-yolo for --inspect and --ps options
 - Duplicate argument handling causing inconsistent behavior with mixed options
@@ -16,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Consolidated all claude-yolo argument parsing through single parse_args() function
 - Enhanced claude-trace argument injection for proper --dangerously-skip-permissions placement
+- Improved logging organization
+- Updated documentation with logging capabilities and examples
 
 ## [0.1.0] - 2025-06-21
 
@@ -51,4 +58,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Directory access limited to current working directory
 - Non-root execution inside container
 - Docker socket mounting disabled by default
-- Warning system for dangerous directories (home, system directories) 
+- Warning system for dangerous directories (home, system directories)

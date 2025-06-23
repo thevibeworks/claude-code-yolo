@@ -4,6 +4,7 @@ set -e
 # Claude Starter Script with Docker Support
 # Runs Claude Code CLI locally or in a Docker container for safe execution
 
+VERSION="0.2.0"
 DOCKER_IMAGE="${DOCKER_IMAGE:-lroolle/claude-code-yolo}"
 DOCKER_TAG="${DOCKER_TAG:-latest}"
 
@@ -23,6 +24,7 @@ show_help() {
     echo "Options:"
     echo "  --trace                     Use claude-trace for logging"
     echo "  --help, -h                  Show this help message"
+    echo "  --version                   Show version information"
     echo "  --yolo                      YOLO mode: Run Claude in Docker (safe but powerful)"
     echo "  --shell                     Open a shell in the Docker container"
     echo ""
@@ -117,6 +119,11 @@ OPEN_SHELL=false
 AUTH_MODE="claude"
 EXTRA_VOLUMES=()
 
+green() { echo -e "\033[32m$1\033[0m"; }
+yellow() { echo -e "\033[33m$1\033[0m"; }
+bright_yellow() { echo -e "\033[93m$1\033[0m"; }
+blue() { echo -e "\033[34m$1\033[0m"; }
+
 i=0
 args=("$@")
 while [ $i -lt ${#args[@]} ]; do
@@ -124,6 +131,11 @@ while [ $i -lt ${#args[@]} ]; do
     case $arg in
     --help | -h)
         show_help
+        exit 0
+        ;;
+    --version)
+        echo "Claude Code YOLO v${VERSION}"
+        echo "Docker Image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
         exit 0
         ;;
     --trace)
@@ -211,7 +223,7 @@ run_claude_local() {
 
     case "$AUTH_MODE" in
     "bedrock")
-        echo "Using AWS Bedrock authentication"
+        AUTH_STATUS="$(yellow 'BEDROCK')"
         if [ -z "$AWS_PROFILE_ID" ]; then
             echo "error: AWS_PROFILE_ID not set. Required for --bedrock mode."
             exit 1
@@ -226,13 +238,9 @@ run_claude_local() {
         export CLAUDE_CODE_USE_BEDROCK=1
         export AWS_REGION="$AWS_REGION"
         export CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
-
-        echo "Main model: $ANTHROPIC_MODEL"
-        echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
-        echo "AWS Region: $AWS_REGION"
         ;;
     "api-key")
-        echo "Using Anthropic API key authentication"
+        AUTH_STATUS="$(yellow 'API-KEY')"
         if [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "error: ANTHROPIC_API_KEY not set. Required for --api-key mode."
             exit 1
@@ -270,37 +278,58 @@ run_claude_local() {
         echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
         ;;
     "vertex")
-        echo "Using Google Vertex AI authentication"
+        AUTH_STATUS="$(yellow 'VERTEX')"
         export CLAUDE_CODE_USE_VERTEX=1
         export CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
 
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
         ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
-
-        echo "Main model: $ANTHROPIC_MODEL"
-        echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
         ;;
     *)
-        echo "Using Claude app authentication (OAuth)"
+        AUTH_STATUS="$(green 'OAuth')"
         if [ ! -d "$HOME/.claude" ]; then
-            echo "warning: Claude app not authenticated. Run 'claude login' first."
+            echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
         fi
         unset ANTHROPIC_API_KEY
         unset CLAUDE_CODE_USE_BEDROCK
-        [ -n "$ANTHROPIC_MODEL" ] && echo "Main model: $ANTHROPIC_MODEL"
-        [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
         ;;
     esac
 
-    if [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
-        echo "Proxy configuration:"
-        [ -n "$HTTP_PROXY" ] && echo "  HTTP_PROXY: $HTTP_PROXY"
-        [ -n "$HTTPS_PROXY" ] && echo "  HTTPS_PROXY: $HTTPS_PROXY"
+    HEADER_LINE="$(green ">>> CLAUDE-LOCAL v$VERSION") | $AUTH_STATUS"
+    [ "$USE_TRACE" = true ] && HEADER_LINE+=" | Trace:$(yellow 'ON')"
+
+    echo ""
+    echo "$HEADER_LINE"
+    echo "Work: $(blue "$(pwd)")"
+
+    ENV_VARS=""
+    [ -n "$ANTHROPIC_MODEL" ] && ENV_VARS+="   $(green 'MODEL'): $ANTHROPIC_MODEL\n"
+    [ -n "$HTTP_PROXY" ] && ENV_VARS+="   $(yellow 'PROXY'): $HTTP_PROXY\n"
+
+    if [ -n "$ENV_VARS" ]; then
+        echo "Envs:"
+        echo -e "$ENV_VARS"
     fi
+
+    local has_dangerous_flag=false
+    for arg in "${CLAUDE_ARGS[@]}"; do
+        if [[ "$arg" == "--dangerously-skip-permissions" ]]; then
+            has_dangerous_flag=true
+            break
+        fi
+    done
+
+    if [ "$has_dangerous_flag" = true ]; then
+        echo ""
+        echo "$(bright_yellow 'BYPASS MODE - claude-code now gets full access to current workspace without asking for permission')"
+    fi
+
+    echo ""
+    echo "$(blue '────────────────────────────────────')"
+    echo ""
 
     if [ "$USE_TRACE" = true ]; then
         if command -v "$CLAUDE_TRACE_PATH" >/dev/null 2>&1; then
-            echo "Using claude-trace for logging"
             CLAUDE_CMD="$CLAUDE_TRACE_PATH"
             FINAL_ARGS=("--include-all-requests" "--run-with" "${CLAUDE_ARGS[@]}")
         else
@@ -309,12 +338,9 @@ run_claude_local() {
             exit 1
         fi
     else
-        echo "Using direct claude execution"
         CLAUDE_CMD="$CLAUDE_PATH"
         FINAL_ARGS=("${CLAUDE_ARGS[@]}")
     fi
-
-    echo "Starting Claude locally..."
     exec "$CLAUDE_CMD" "${FINAL_ARGS[@]}"
 }
 
@@ -380,8 +406,6 @@ if [ "$USE_DOCKER" != true ]; then
     exit 0
 fi
 
-echo "YOLO MODE: Running Claude in Docker container"
-
 if check_dangerous_directory; then
     warn_dangerous_directory
 fi
@@ -401,7 +425,6 @@ DOCKER_ARGS=(
 )
 
 DOCKER_ARGS+=(
-
     # Mount current directory at same path
     "-v" "${CURRENT_DIR}:${CURRENT_DIR}"
 
@@ -424,7 +447,6 @@ if [ -d "${CURRENT_DIR}/.claude" ]; then
     DOCKER_ARGS+=("-v" "${CURRENT_DIR}/.claude:${CURRENT_DIR}/.claude")
 fi
 
-
 # Mount for AWS bedrock api
 if [ -d "$HOME/.aws" ]; then
     DOCKER_ARGS+=("-v" "$HOME/.aws:/root/.aws:ro")
@@ -435,15 +457,12 @@ fi
 
 # Only mount Docker socket if explicitly enabled
 if [ "${CLAUDE_YOLO_DOCKER_SOCKET:-false}" = "true" ] && [ -S /var/run/docker.sock ]; then
-    echo "warning: Docker socket mounted - container has full Docker control"
     DOCKER_ARGS+=("-v" "/var/run/docker.sock:/var/run/docker.sock")
 fi
 
 if [ ${#EXTRA_VOLUMES[@]} -gt 0 ]; then
-    echo "Adding extra volumes:"
     for volume in "${EXTRA_VOLUMES[@]}"; do
         if [ "$volume" != "-v" ]; then
-            echo "  $volume"
             DOCKER_ARGS+=("-v" "$volume")
         fi
     done
@@ -517,7 +536,6 @@ DOCKER_ARGS+=("-e" "CLAUDE_GID=$CLAUDE_GID")
 
 case "$AUTH_MODE" in
 "bedrock")
-    echo "Using AWS Bedrock authentication"
     if [ -z "$AWS_PROFILE_ID" ]; then
         echo "error: AWS_PROFILE_ID not set. Required for --bedrock mode."
         exit 1
@@ -543,12 +561,8 @@ case "$AUTH_MODE" in
     [ -n "$AWS_SESSION_TOKEN" ] && DOCKER_ARGS+=("-e" "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN")
     [ -n "$AWS_PROFILE" ] && DOCKER_ARGS+=("-e" "AWS_PROFILE=$AWS_PROFILE")
 
-    echo "Main model: $ANTHROPIC_MODEL"
-    echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
-    echo "AWS Region: $AWS_REGION"
     ;;
 "api-key")
-    echo "Using Anthropic API key authentication"
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         echo "error: ANTHROPIC_API_KEY not set. Required for --api-key mode."
         exit 1
@@ -587,11 +601,8 @@ case "$AUTH_MODE" in
     DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$MAIN_MODEL_NAME")
     DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$FAST_MODEL_NAME")
 
-    echo "Main model: $MAIN_MODEL_NAME"
-    echo "Fast model: $FAST_MODEL_NAME"
     ;;
 "vertex")
-    echo "Using Google Vertex AI authentication"
 
     ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
     ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
@@ -614,44 +625,84 @@ case "$AUTH_MODE" in
         DOCKER_ARGS+=("-v" "$HOME/.config/gcloud:/root/.config/gcloud")
     fi
 
-    echo "Main model: $ANTHROPIC_MODEL"
-    echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
     ;;
 *)
-    echo "Using Claude app authentication (OAuth)"
     if [ ! -d "$HOME/.claude" ]; then
-        echo "warning: Claude app not authenticated. Run 'claude login' first."
+        echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
     fi
-    # Don't pass API key or Bedrock settings to ensure Claude app auth is used
     [ -n "$ANTHROPIC_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$ANTHROPIC_MODEL")
     [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL")
 
-    [ -n "$ANTHROPIC_MODEL" ] && echo "Main model: $ANTHROPIC_MODEL"
-    [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
     ;;
 esac
 
-if [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
-    echo "Proxy configuration:"
-    [ -n "$HTTP_PROXY" ] && echo "  HTTP_PROXY: $HTTP_PROXY"
-    [ -n "$HTTPS_PROXY" ] && echo "  HTTPS_PROXY: $HTTPS_PROXY"
+AUTH_STATUS=""
+case "$AUTH_MODE" in
+"api-key") AUTH_STATUS="$(yellow 'API-KEY')" ;;
+"bedrock") AUTH_STATUS="$(yellow 'BEDROCK')" ;;
+"vertex") AUTH_STATUS="$(yellow 'VERTEX')" ;;
+*) AUTH_STATUS="$(green 'OAuth')" ;;
+esac
+
+HEADER_LINE="$(green ">>> CLAUDE-YOLO v$VERSION") | $AUTH_STATUS"
+[ "$USE_TRACE" = true ] && HEADER_LINE+=" | Trace:$(yellow 'ON')"
+
+echo ""
+echo "$HEADER_LINE"
+echo "Work: $(blue "$CURRENT_DIR")"
+
+echo "Vols: $(blue "${CURRENT_DIR}:${CURRENT_DIR}") $(green '[workspace]')"
+[ -d "$HOME/.claude" ] && echo "      $(blue "$HOME/.claude:/root/.claude") $(green '[auth]')"
+[ -f "$HOME/.claude.json" ] && echo "      $(blue "$HOME/.claude.json:/root/.claude.json") $(green '[auth]')"
+[ -d "${CURRENT_DIR}/.claude" ] && echo "      $(blue "${CURRENT_DIR}/.claude:${CURRENT_DIR}/.claude") $(green '[project]')"
+[ -d "$HOME/.aws" ] && echo "      $(blue "$HOME/.aws:/root/.aws:ro") $(green '[aws]')"
+[ "${CLAUDE_YOLO_DOCKER_SOCKET:-false}" = "true" ] && [ -S /var/run/docker.sock ] && echo "      $(blue "/var/run/docker.sock:/var/run/docker.sock") $(yellow '[docker]')"
+
+if [ ${#EXTRA_VOLUMES[@]} -gt 0 ]; then
+    for volume in "${EXTRA_VOLUMES[@]}"; do
+        if [ "$volume" != "-v" ]; then
+            echo "      $(blue "$volume") $(yellow '[user]')"
+        fi
+    done
 fi
+
+ENV_VARS=""
+case "$AUTH_MODE" in
+"bedrock")
+    ENV_VARS+="   $(green 'MODEL'): $MAIN_MODEL_ARN\n"
+    ENV_VARS+="   $(green 'FAST'): $FAST_MODEL_ARN\n"
+    ENV_VARS+="   $(yellow 'REGION'): $AWS_REGION\n"
+    ;;
+"api-key")
+    ENV_VARS+="   $(green 'MODEL'): $MAIN_MODEL_NAME\n"
+    ENV_VARS+="   $(green 'FAST'): $FAST_MODEL_NAME\n"
+    ;;
+"vertex")
+    ENV_VARS+="   $(green 'MODEL'): $ANTHROPIC_MODEL\n"
+    ENV_VARS+="   $(green 'FAST'): $ANTHROPIC_SMALL_FAST_MODEL\n"
+    ;;
+esac
+[ -n "$HTTP_PROXY" ] && ENV_VARS+="   $(yellow 'PROXY'): $HTTP_PROXY\n"
+
+if [ -n "$ENV_VARS" ]; then
+    echo "Envs:"
+    echo -e "$ENV_VARS"
+fi
+
+echo ""
+echo "$(bright_yellow 'BYPASS MODE - claude-code now gets full access to current workspace without asking for permission')"
+echo ""
+echo "$(blue '────────────────────────────────────')"
+echo ""
 
 DOCKER_ARGS+=("${DOCKER_IMAGE}:${DOCKER_TAG}")
 
 if [ "$OPEN_SHELL" = true ]; then
-    echo "Opening shell in container..."
     DOCKER_ARGS+=("/bin/zsh")
 elif [ "$USE_TRACE" = true ]; then
-    echo "Using claude-trace for logging"
     DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "${CLAUDE_ARGS[@]}")
 else
     DOCKER_ARGS+=("claude" "${CLAUDE_ARGS[@]}")
 fi
-
-echo "Starting Claude Code YOLO container..."
-echo "Working directory: $CURRENT_DIR"
-echo "Container: $CONTAINER_NAME"
-echo ""
 
 exec docker "${DOCKER_ARGS[@]}"
