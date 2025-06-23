@@ -5,6 +5,20 @@
 
 ## Issue Analysis: 2025-06-23
 
+### [bug-fixed] Claude Code Review OIDC token authentication error
+
+**Problem**: CI failing with "Invalid OIDC token" after changing permissions to write.
+
+**Solution**: Added explicit `github_token: ${{ secrets.GITHUB_TOKEN }}` to force direct token auth.
+
+**Cause**: Write permissions trigger GitHub App auth by default, but no App configured.
+
+**Status**: ✅ **COMPLETED**
+
+---
+
+## Issue Analysis: 2025-06-23
+
 ### [enhancement-completed] Claude Code Review workflow simplification
 
 **Problem**: Overcomplicated workflow with manual duplicate detection using GitHub CLI.
