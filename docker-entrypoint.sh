@@ -6,7 +6,6 @@ CLAUDE_USER="${CLAUDE_USER:-claude}"
 CLAUDE_UID="${CLAUDE_UID:-1001}"
 CLAUDE_GID="${CLAUDE_GID:-1001}"
 CLAUDE_HOME="${CLAUDE_HOME:-/home/claude}"
-USE_NONROOT="${USE_NONROOT:-false}"
 
 show_environment_info() {
     echo "Claude Code YOLO Environment"
@@ -50,11 +49,7 @@ show_environment_info() {
         echo "Proxy configured"
     fi
 
-    if [ "$USE_NONROOT" = "true" ]; then
-        echo "Non-root mode: $CLAUDE_USER (UID=$CLAUDE_UID, GID=$CLAUDE_GID)"
-    else
-        echo "Root mode: Running with --dangerously-skip-permissions"
-    fi
+    echo "Running as: $CLAUDE_USER (UID=$CLAUDE_UID, GID=$CLAUDE_GID)"
 
     echo "================================"
 }
@@ -208,72 +203,39 @@ main() {
         exit 1
     fi
 
-    if [ "$USE_NONROOT" = "true" ]; then
-        setup_nonroot_user
+    # Always run as non-root claude user
+    setup_nonroot_user
 
-        if [ $# -eq 0 ]; then
-            echo "Starting Claude Code as $CLAUDE_USER with YOLO powers..."
-            build_gosu_env_cmd "$CLAUDE_USER" "$CLAUDE_CMD" --dangerously-skip-permissions
-        else
-            cmd="$1"
-            shift
-
-            # Check if this is a Claude command (claude, claude-trace, etc.)
-            if [ "$cmd" = "claude" ] || [ "$cmd" = "$CLAUDE_CMD" ]; then
-                echo "Executing Claude as $CLAUDE_USER with YOLO powers: $cmd $@"
-                build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@" --dangerously-skip-permissions
-            elif [ "$cmd" = "claude-trace" ]; then
-                echo "Executing Claude-trace as $CLAUDE_USER with YOLO powers: $cmd $@"
-                # claude-trace --include-all-requests --run-with claude [args]
-                # We need to inject --dangerously-skip-permissions into the claude command
-                args=("$@")
-                new_args=()
-                i=0
-                while [ $i -lt ${#args[@]} ]; do
-                    if [ "${args[$i]}" = "--run-with" ] && [ $((i + 1)) -lt ${#args[@]} ] && [ "${args[$((i + 1))]}" = "claude" ]; then
-                        new_args+=("--run-with" "claude" "--dangerously-skip-permissions")
-                        i=$((i + 2))
-                    else
-                        new_args+=("${args[$i]}")
-                        i=$((i + 1))
-                    fi
-                done
-                build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "${new_args[@]}"
-            else
-                echo "Executing as $CLAUDE_USER: $cmd $@"
-                build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@"
-            fi
-        fi
+    if [ $# -eq 0 ]; then
+        echo "Starting Claude Code as $CLAUDE_USER with YOLO powers..."
+        build_gosu_env_cmd "$CLAUDE_USER" "$CLAUDE_CMD" --dangerously-skip-permissions
     else
-        if [ $# -eq 0 ]; then
-            echo "Starting Claude Code in root mode with YOLO powers..."
-            exec "$CLAUDE_CMD" --dangerously-skip-permissions
+        cmd="$1"
+        shift
+
+        # Check if this is a Claude command (claude, claude-trace, etc.)
+        if [ "$cmd" = "claude" ] || [ "$cmd" = "$CLAUDE_CMD" ]; then
+            echo "Executing Claude as $CLAUDE_USER with YOLO powers: $cmd $@"
+            build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@" --dangerously-skip-permissions
+        elif [ "$cmd" = "claude-trace" ]; then
+            echo "Executing Claude-trace as $CLAUDE_USER with YOLO powers: $cmd $@"
+            # claude-trace --include-all-requests --run-with [args]
+            # We need to inject --dangerously-skip-permissions as first argument after --run-with
+            args=("$@")
+            new_args=()
+            i=0
+            while [ $i -lt ${#args[@]} ]; do
+                if [ "${args[$i]}" = "--run-with" ]; then
+                    new_args+=("--run-with" "--dangerously-skip-permissions")
+                else
+                    new_args+=("${args[$i]}")
+                fi
+                i=$((i + 1))
+            done
+            build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "${new_args[@]}"
         else
-            cmd="$1"
-            if [ "$cmd" = "claude" ] || [ "$cmd" = "$CLAUDE_CMD" ]; then
-                echo "Executing Claude in root mode with YOLO powers: $@"
-                exec "$@" --dangerously-skip-permissions
-            elif [ "$cmd" = "claude-trace" ]; then
-                echo "Executing Claude-trace in root mode with YOLO powers: $@"
-                # claude-trace --include-all-requests --run-with claude [args]
-                # We need to inject --dangerously-skip-permissions into the claude command
-                args=("$@")
-                new_args=()
-                i=1 # Skip first arg (claude-trace)
-                while [ $i -lt ${#args[@]} ]; do
-                    if [ "${args[$i]}" = "--run-with" ] && [ $((i + 1)) -lt ${#args[@]} ] && [ "${args[$((i + 1))]}" = "claude" ]; then
-                        new_args+=("--run-with" "claude" "--dangerously-skip-permissions")
-                        i=$((i + 2))
-                    else
-                        new_args+=("${args[$i]}")
-                        i=$((i + 1))
-                    fi
-                done
-                exec "$cmd" "${new_args[@]}"
-            else
-                echo "Executing: $@"
-                exec "$@"
-            fi
+            echo "Executing as $CLAUDE_USER: $cmd $@"
+            build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@"
         fi
     fi
 }

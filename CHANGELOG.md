@@ -5,6 +5,18 @@ All notable changes to claude-code-yolo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Argument parsing infinite loop in claude-yolo for --inspect and --ps options
+- Duplicate argument handling causing inconsistent behavior with mixed options
+- claude-trace --run-with syntax (removed unnecessary "claude" argument)
+- Container shortcuts now properly exit after --ps command
+
+### Changed
+- Consolidated all claude-yolo argument parsing through single parse_args() function
+- Enhanced claude-trace argument injection for proper --dangerously-skip-permissions placement
+
 ## [0.1.0] - 2025-06-21
 
 ### Added

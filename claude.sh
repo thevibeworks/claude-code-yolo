@@ -302,7 +302,7 @@ run_claude_local() {
         if command -v "$CLAUDE_TRACE_PATH" >/dev/null 2>&1; then
             echo "Using claude-trace for logging"
             CLAUDE_CMD="$CLAUDE_TRACE_PATH"
-            FINAL_ARGS=("--include-all-requests" "--run-with" "claude" "${CLAUDE_ARGS[@]}")
+            FINAL_ARGS=("--include-all-requests" "--run-with" "${CLAUDE_ARGS[@]}")
         else
             echo "error: claude-trace not found but --trace was requested" >&2
             echo "install claude-trace with: npm install -g @mariozechner/claude-trace" >&2
@@ -508,8 +508,7 @@ fi
 [ -n "$CLAUDE_CODE_USE_VERTEX" ] && DOCKER_ARGS+=("-e" "CLAUDE_CODE_USE_VERTEX=$CLAUDE_CODE_USE_VERTEX")
 [ -n "$DISABLE_TELEMETRY" ] && DOCKER_ARGS+=("-e" "DISABLE_TELEMETRY=$DISABLE_TELEMETRY")
 
-# Pass non-root mode settings (always enabled in YOLO mode)
-DOCKER_ARGS+=("-e" "USE_NONROOT=true")
+# Always run as non-root claude user for security and file ownership
 # Default to host user UID/GID for seamless file access
 CLAUDE_UID="${CLAUDE_UID:-$(id -u)}"
 CLAUDE_GID="${CLAUDE_GID:-$(id -g)}"
@@ -645,7 +644,7 @@ if [ "$OPEN_SHELL" = true ]; then
     DOCKER_ARGS+=("/bin/zsh")
 elif [ "$USE_TRACE" = true ]; then
     echo "Using claude-trace for logging"
-    DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "claude" "${CLAUDE_ARGS[@]}")
+    DOCKER_ARGS+=("claude-trace" "--include-all-requests" "--run-with" "${CLAUDE_ARGS[@]}")
 else
     DOCKER_ARGS+=("claude" "${CLAUDE_ARGS[@]}")
 fi

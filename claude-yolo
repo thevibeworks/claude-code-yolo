@@ -83,9 +83,12 @@ parse_args() {
             ;;
         --inspect)
             inspect_container
+            # inspect_container calls exec, but add shift for safety
+            shift
             ;;
         --ps)
             list_containers
+            exit 0
             ;;
         --help | -h)
             echo "Claude YOLO - Container Shortcuts"
@@ -119,19 +122,5 @@ parse_args() {
     exec "$CLAUDE_SH" --yolo "${claude_args[@]}"
 }
 
-# Handle special shortcuts first
-case "$1" in
---inspect)
-    inspect_container
-    ;;
---ps)
-    list_containers
-    ;;
---help | -h)
-    # Will be handled by parse_args
-    parse_args "$@"
-    ;;
-*)
-    parse_args "$@"
-    ;;
-esac
+# All argument parsing handled by parse_args
+parse_args "$@"
