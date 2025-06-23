@@ -23,6 +23,7 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --trace                     Use claude-trace for logging"
+    echo "  --verbose                   Show verbose output including environment info"
     echo "  --help, -h                  Show this help message"
     echo "  --version                   Show version information"
     echo "  --yolo                      YOLO mode: Run Claude in Docker (safe but powerful)"
@@ -114,6 +115,7 @@ get_model_arn() {
 }
 
 USE_TRACE=false
+VERBOSE=false
 CLAUDE_ARGS=()
 OPEN_SHELL=false
 AUTH_MODE="claude"
@@ -140,6 +142,10 @@ while [ $i -lt ${#args[@]} ]; do
         ;;
     --trace)
         USE_TRACE=true
+        i=$((i + 1))
+        ;;
+    --verbose)
+        VERBOSE=true
         i=$((i + 1))
         ;;
     --yolo)
@@ -526,6 +532,7 @@ fi
 # Pass Claude Code specific environment variables
 [ -n "$CLAUDE_CODE_USE_VERTEX" ] && DOCKER_ARGS+=("-e" "CLAUDE_CODE_USE_VERTEX=$CLAUDE_CODE_USE_VERTEX")
 [ -n "$DISABLE_TELEMETRY" ] && DOCKER_ARGS+=("-e" "DISABLE_TELEMETRY=$DISABLE_TELEMETRY")
+[ "$VERBOSE" = true ] && DOCKER_ARGS+=("-e" "VERBOSE=true")
 
 # Always run as non-root claude user for security and file ownership
 # Default to host user UID/GID for seamless file access
