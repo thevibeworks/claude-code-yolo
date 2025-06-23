@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2025-06-23
+
 ### Added
 - Unified logging system for improved UX
 - Clean output by default showing only authentication method
