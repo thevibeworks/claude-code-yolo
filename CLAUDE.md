@@ -129,7 +129,7 @@ npm install -g @mariozechner/claude-trace
 # Enable tracing in local mode
 ./claude.sh --trace .
 
-# Enable tracing in YOLO mode  
+# Enable tracing in YOLO mode
 ./claude.sh --yolo --trace .
 
 # Bedrock with tracing

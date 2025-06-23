@@ -1,57 +1,57 @@
 #!/bin/bash
 set -e
 
-# Environment variables for non-root mode
 CLAUDE_USER="${CLAUDE_USER:-claude}"
 CLAUDE_UID="${CLAUDE_UID:-1001}"
 CLAUDE_GID="${CLAUDE_GID:-1001}"
 CLAUDE_HOME="${CLAUDE_HOME:-/home/claude}"
 
 show_environment_info() {
-    echo "Claude Code YOLO Environment"
-    echo "================================"
-    echo "Working Directory: $(pwd)"
-    echo "Running as: $(whoami) (UID=$(id -u), GID=$(id -g))"
-    echo "Python: $(python3 --version)"
-    echo "Node.js: $(node --version 2>/dev/null || echo 'Not found')"
-    echo "Rust: $(rustc --version | head -n1)"
-    echo "Go: $(go version)"
+    if [ "$VERBOSE" = "true" ]; then
+        echo "Claude Code YOLO Environment"
+        echo "================================"
+        echo "Working Directory: $(pwd)"
+        echo "Running as: $(whoami) (UID=$(id -u), GID=$(id -g))"
+        echo "Python: $(python3 --version)"
+        echo "Node.js: $(node --version 2>/dev/null || echo 'Not found')"
+        echo "Rust: $(rustc --version | head -n1)"
+        echo "Go: $(go version)"
 
-    CLAUDE_PATH=""
-    for path in "/usr/local/bin/claude" "/usr/bin/claude" "$(which claude 2>/dev/null)"; do
-        if [ -x "$path" ]; then
-            CLAUDE_PATH="$path"
-            break
+        CLAUDE_PATH=""
+        for path in "/usr/local/bin/claude" "/usr/bin/claude" "$(which claude 2>/dev/null)"; do
+            if [ -x "$path" ]; then
+                CLAUDE_PATH="$path"
+                break
+            fi
+        done
+
+        if [ -n "$CLAUDE_PATH" ]; then
+            echo "Claude: $($CLAUDE_PATH --version 2>/dev/null || echo 'Found but version failed')"
+            echo "Claude location: $CLAUDE_PATH"
+        else
+            echo "Claude: Not found in PATH"
+            echo "Searching for Claude..."
+            find /usr -name "claude" -type f 2>/dev/null | head -3 || true
         fi
-    done
 
-    if [ -n "$CLAUDE_PATH" ]; then
-        echo "Claude: $($CLAUDE_PATH --version 2>/dev/null || echo 'Found but version failed')"
-        echo "Claude location: $CLAUDE_PATH"
-    else
-        echo "Claude: Not found in PATH"
-        echo "Searching for Claude..."
-        find /usr -name "claude" -type f 2>/dev/null | head -3 || true
+        if [ -d "/root/.claude" ]; then
+            echo "Claude auth directory found"
+            ls -la /root/.claude/ | head -5
+        else
+            echo "warning: Claude auth directory not found at /root/.claude"
+        fi
+
+        if [ -n "$ANTHROPIC_MODEL" ]; then
+            echo "Model: $ANTHROPIC_MODEL"
+        fi
+
+        if [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
+            echo "Proxy configured"
+        fi
+
+        echo "Running as: $CLAUDE_USER (UID=$CLAUDE_UID, GID=$CLAUDE_GID)"
+        echo "================================"
     fi
-
-    if [ -d "/root/.claude" ]; then
-        echo "Claude auth directory found"
-        ls -la /root/.claude/ | head -5
-    else
-        echo "warning: Claude auth directory not found at /root/.claude"
-    fi
-
-    if [ -n "$ANTHROPIC_MODEL" ]; then
-        echo "Model: $ANTHROPIC_MODEL"
-    fi
-
-    if [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
-        echo "Proxy configured"
-    fi
-
-    echo "Running as: $CLAUDE_USER (UID=$CLAUDE_UID, GID=$CLAUDE_GID)"
-
-    echo "================================"
 }
 
 setup_nonroot_user() {
@@ -60,12 +60,11 @@ setup_nonroot_user() {
     local current_gid=$(id -g "$CLAUDE_USER")
 
     if [ "$CLAUDE_GID" != "$current_gid" ]; then
-        echo "[entrypoint] updating $CLAUDE_USER GID: $current_gid -> $CLAUDE_GID"
-        # Check if target GID is already taken by another group
+        [ "$VERBOSE" = "true" ] && echo "[entrypoint] updating $CLAUDE_USER GID: $current_gid -> $CLAUDE_GID"
         if getent group "$CLAUDE_GID" >/dev/null 2>&1; then
             existing_group=$(getent group "$CLAUDE_GID" | cut -d: -f1)
-            echo "[entrypoint] GID $CLAUDE_GID already taken by group: $existing_group"
-            echo "[entrypoint] Adding $CLAUDE_USER to existing group $existing_group"
+            [ "$VERBOSE" = "true" ] && echo "[entrypoint] GID $CLAUDE_GID already taken by group: $existing_group"
+            [ "$VERBOSE" = "true" ] && echo "[entrypoint] Adding $CLAUDE_USER to existing group $existing_group"
             usermod -g "$CLAUDE_GID" "$CLAUDE_USER" 2>/dev/null || true
         else
             groupmod -g "$CLAUDE_GID" "$CLAUDE_USER"
@@ -73,33 +72,33 @@ setup_nonroot_user() {
     fi
 
     if [ "$CLAUDE_UID" != "$current_uid" ]; then
-        echo "[entrypoint] updating $CLAUDE_USER UID: $current_uid -> $CLAUDE_UID"
+        [ "$VERBOSE" = "true" ] && echo "[entrypoint] updating $CLAUDE_USER UID: $current_uid -> $CLAUDE_UID"
         usermod -u "$CLAUDE_UID" -g "$CLAUDE_GID" "$CLAUDE_USER"
         chown -R "$CLAUDE_UID:$CLAUDE_GID" "$CLAUDE_HOME"
     fi
 
-    echo "[entrypoint] setting up access to mounted volumes"
+    [ "$VERBOSE" = "true" ] && echo "[entrypoint] setting up access to mounted volumes"
 
     # Make /root fully accessible - Claude needs permissions to work
     chmod 755 /root 2>/dev/null || true
 
     # Essential: Handle .claude directory
     if [ -d "/root/.claude" ]; then
-        echo "[entrypoint] linking .claude"
+        [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .claude"
         chmod -R 755 /root/.claude 2>/dev/null || true
         ln -sfn /root/.claude "$CLAUDE_HOME/.claude"
     fi
 
     # Essential: Handle .claude.json
     if [ -f "/root/.claude.json" ]; then
-        echo "[entrypoint] linking .claude.json"
+        [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .claude.json"
         chmod 644 /root/.claude.json 2>/dev/null || true
         ln -sfn /root/.claude.json "$CLAUDE_HOME/.claude.json"
     fi
 
     # Essential: Handle .config/gcloud directory for Google Vertex AI
     if [ -d "/root/.config/gcloud" ]; then
-        echo "[entrypoint] linking .config/gcloud"
+        [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .config/gcloud"
         mkdir -p "$CLAUDE_HOME/.config"
         chmod -R 755 /root/.config/gcloud 2>/dev/null || true
         ln -sfn /root/.config/gcloud "$CLAUDE_HOME/.config/gcloud"
@@ -107,7 +106,7 @@ setup_nonroot_user() {
 
     # Common: AWS credentials
     if [ -d "/root/.aws" ]; then
-        echo "[entrypoint] linking .aws"
+        [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .aws"
         chmod -R 755 /root/.aws 2>/dev/null || true
         ln -sfn /root/.aws "$CLAUDE_HOME/.aws"
     fi
@@ -123,7 +122,7 @@ setup_nonroot_user() {
                 continue
                 ;;
             *)
-                echo "[entrypoint] linking $basename_item (user-mounted, preserving permissions)"
+                [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking $basename_item (preserving permissions)"
                 ln -sfn "$item" "$CLAUDE_HOME/$basename_item"
                 ;;
             esac
@@ -137,10 +136,8 @@ build_gosu_env_cmd() {
     local user="$1"
     shift
 
-    # Start with gosu user env
     local -a cmd=(gosu "$user" env)
 
-    # Always set HOME and PATH
     cmd+=("HOME=$CLAUDE_HOME" "PATH=$PATH")
 
     # Pass through proxy settings
@@ -174,7 +171,6 @@ build_gosu_env_cmd() {
     # Add the actual command and its arguments
     cmd+=("$@")
 
-    # Execute the command
     exec "${cmd[@]}"
 }
 
@@ -207,7 +203,7 @@ main() {
     setup_nonroot_user
 
     if [ $# -eq 0 ]; then
-        echo "Starting Claude Code as $CLAUDE_USER with YOLO powers..."
+        # Starting message removed for cleaner startup
         build_gosu_env_cmd "$CLAUDE_USER" "$CLAUDE_CMD" --dangerously-skip-permissions
     else
         cmd="$1"
@@ -215,10 +211,10 @@ main() {
 
         # Check if this is a Claude command (claude, claude-trace, etc.)
         if [ "$cmd" = "claude" ] || [ "$cmd" = "$CLAUDE_CMD" ]; then
-            echo "Executing Claude as $CLAUDE_USER with YOLO powers: $cmd $@"
+            # Execution message removed for cleaner startup
             build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@" --dangerously-skip-permissions
         elif [ "$cmd" = "claude-trace" ]; then
-            echo "Executing Claude-trace as $CLAUDE_USER with YOLO powers: $cmd $@"
+            # Execution message removed for cleaner startup
             # claude-trace --include-all-requests --run-with [args]
             # We need to inject --dangerously-skip-permissions as first argument after --run-with
             args=("$@")
@@ -234,7 +230,7 @@ main() {
             done
             build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "${new_args[@]}"
         else
-            echo "Executing as $CLAUDE_USER: $cmd $@"
+            # Execution message removed for cleaner startup
             build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@"
         fi
     fi
