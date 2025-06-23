@@ -4,8 +4,8 @@ set -e
 # Claude Starter Script with Docker Support
 # Runs Claude Code CLI locally or in a Docker container for safe execution
 
-VERSION="0.2.0"
-DOCKER_IMAGE="${DOCKER_IMAGE:-lroolle/claude-code-yolo}"
+VERSION="0.2.2"
+DOCKER_IMAGE="${DOCKER_IMAGE:-ghcr.io/lroolle/claude-code-yolo}"
 DOCKER_TAG="${DOCKER_TAG:-latest}"
 
 DEFAULT_ANTHROPIC_MODEL="sonnet-4"
@@ -69,15 +69,15 @@ show_help() {
     echo "Available models: sonnet-4, opus-4, sonnet-3-7, sonnet-3-5, haiku-3-5, sonnet-3, opus-3, haiku-3, deepseek-r1"
     echo ""
     echo "Examples:"
-    echo "  $0 .                                          # Claude app auth (default)"
-    echo "  $0 --auth-with api-key .                      # Use API key"
-    echo "  $0 --auth-with bedrock .                      # Use AWS Bedrock"
-    echo "  $0 --auth-with vertex .                       # Use Google Vertex AI"
-    echo "  $0 --yolo .                                   # YOLO mode with default auth"
-    echo "  $0 --yolo --auth-with bedrock .               # YOLO mode with Bedrock"
-    echo "  $0 --yolo -v ~/.ssh:/root/.ssh:ro .           # YOLO mode with volume mount"
-    echo "  ANTHROPIC_MODEL=opus-4 $0 .                   # Use Opus 4 with default auth"
-    echo "  GH_TOKEN=ghp_xxx $0 --yolo .                  # YOLO mode with GitHub CLI auth"
+    echo "  $0                                            # Claude app auth (default)"
+    echo "  $0 --auth-with api-key                        # Use API key"
+    echo "  $0 --auth-with bedrock                        # Use AWS Bedrock"
+    echo "  $0 --auth-with vertex                         # Use Google Vertex AI"
+    echo "  $0 --yolo                                     # YOLO mode with default auth"
+    echo "  $0 --yolo --auth-with bedrock                 # YOLO mode with Bedrock"
+    echo "  $0 --yolo -v ~/.ssh:/root/.ssh:ro             # YOLO mode with volume mount"
+    echo "  ANTHROPIC_MODEL=opus-4 $0                     # Use Opus 4 with default auth"
+    echo "  GH_TOKEN=ghp_xxx $0 --yolo                    # YOLO mode with GitHub CLI auth"
     echo ""
 }
 

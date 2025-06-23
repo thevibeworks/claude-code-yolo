@@ -104,12 +104,12 @@ parse_args() {
             echo "                Can be used multiple times"
             echo ""
             echo "Examples:"
-            echo "  claude-yolo .                                # Run Claude in YOLO mode"
+            echo "  claude-yolo                                  # Run Claude in YOLO mode"
             echo "  claude-yolo --inspect                        # Quick access to running container"
             echo "  claude-yolo --ps                             # See project containers"
-            echo "  claude-yolo -v ~/.gitconfig:/root/.gitconfig .      # Mount git config"
-            echo "  claude-yolo -v ~/.ssh:/root/.ssh:ro .               # Mount SSH keys read-only"
-            echo "  claude-yolo -v ~/tools:/tools -v ~/data:/data .     # Multiple mounts"
+            echo "  claude-yolo -v ~/.gitconfig:/root/.gitconfig        # Mount git config"
+            echo "  claude-yolo -v ~/.ssh:/root/.ssh:ro                 # Mount SSH keys read-only"
+            echo "  claude-yolo -v ~/tools:/tools -v ~/data:/data       # Multiple mounts"
             exit 0
             ;;
         *)
