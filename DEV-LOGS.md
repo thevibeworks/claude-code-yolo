@@ -5,6 +5,20 @@
 
 ## Issue Analysis: 2025-06-23
 
+### [bug-fixed] Root user (UID 0) handling in docker-entrypoint.sh
+
+**Problem**: `sudo claude-yolo` fails with "usermod: UID '0' already exists" error.
+
+**Solution**: Detect UID=0 and GID=0 cases independently, use fallback UID/GID 1000.
+
+**Security Fix**: Prevent container user getting root group when host has GID=0 but UID≠0.
+
+**Status**: ✅ **COMPLETED** - PR #22
+
+---
+
+## Issue Analysis: 2025-06-23
+
 ### [bug-fixed] Claude Code Review OIDC token authentication error
 
 **Problem**: CI failing with "Invalid OIDC token" after changing permissions to write.

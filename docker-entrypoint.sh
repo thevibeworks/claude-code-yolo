@@ -59,13 +59,11 @@ setup_nonroot_user() {
     local current_uid=$(id -u "$CLAUDE_USER")
     local current_gid=$(id -g "$CLAUDE_USER")
 
-    # Handle UID=0 case (host user is root)
     if [ "$CLAUDE_UID" = "0" ]; then
         echo "[entrypoint] WARNING: Host user is root (UID=0). Using fallback UID 1000 for security."
         CLAUDE_UID=1000
     fi
 
-    # Handle GID=0 case (host user in root group)
     if [ "$CLAUDE_GID" = "0" ]; then
         echo "[entrypoint] WARNING: Host user is in root group (GID=0). Using fallback GID 1000 for security."
         CLAUDE_GID=1000
