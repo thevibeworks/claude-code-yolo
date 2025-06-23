@@ -2,6 +2,45 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## PROJECT STRUCTURE
+
+```
+claude-code-yolo/
+├── CLAUDE.md                  # This file - project guidance for Claude
+├── README.md                  # Main documentation 
+├── CHANGELOG.md               # Version history
+├── DEV-LOGS.md               # Development journal
+├── TODO.md                   # Task tracking
+├── install.sh                # One-line installer script
+├── Makefile                  # Build automation
+├── Dockerfile                # Container image definition
+├── .dockerignore             # Docker build exclusions
+├── docker-entrypoint.sh      # Container startup script
+├── .gitignore                # Git exclusions
+├── claude.sh                 # Main wrapper script (local/Docker modes)
+├── claude-yolo               # Quick YOLO mode wrapper
+├── claudeb.sh                # Bedrock authentication helper
+│
+├── .github/                  # GitHub automation
+│   ├── ISSUE_TEMPLATE.md     # Bug report template
+│   └── workflows/            # GitHub Actions
+│       ├── ci.yml           # Pull request checks
+│       ├── release.yml      # Release automation
+│       ├── claude.yml       # Claude @mention handler
+│       └── claude-code-review.yml  # Automated code review
+│
+├── workflows/                # Development workflows
+│   ├── GIT-COMMIT.md        # Commit guidelines
+│   ├── GITHUB-PR.md         # PR creation process
+│   └── PRE-RELEASE.md       # Release checklist
+│
+└── references/              # Documentation and research
+    ├── chats/               # AI conversation logs
+    ├── claude-code/         # Official Claude Code repo reference
+    ├── claude-code-docs/    # Official documentation
+    └── code-reviews/        # AI code review examples
+```
+
 ## PROJECT PURPOSE
 
 **Claude Code YOLO wraps the Claude CLI in Docker to safely enable `--dangerously-skip-permissions` without compromising your local machine.**
@@ -102,8 +141,7 @@ Docker container automatically translates `127.0.0.1` and `localhost` to `host.d
 * "Invalid API key" - Mount both `~/.claude` and `~/.claude.json`
 * Proxy not working - Localhost auto-translates to `host.docker.internal`
 * Permission denied - Container copies auth files with proper permissions
-* Wrong auth method - Use explicit flags: `--claude`, `--api-key`, `--bedrock`
-* Claude refuses dangerous permissions - YOLO mode runs as non-root + adds `--dangerously-skip-permissions`
+* Claude refuses dangerous permissions on root user - YOLO mode runs as non-root + adds `--dangerously-skip-permissions`
 * Running in home directory - Script warns and requires confirmation, always cd to project first
 
 ## Development Tools Included
@@ -114,112 +152,3 @@ Docker container automatically translates `127.0.0.1` and `localhost` to `host.d
 **Editors**: vim, neovim, nano
 **Shell**: zsh with oh-my-zsh and plugins
 **Claude**: claude, claude-trace pre-installed
-
-## Request Tracing Support
-
-Claude Code YOLO integrates with [claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace) for detailed request logging and debugging.
-
-**Installation:**
-```bash
-npm install -g @mariozechner/claude-trace
-```
-
-**Usage:**
-```bash
-# Enable tracing in local mode
-./claude.sh --trace .
-
-# Enable tracing in YOLO mode
-./claude.sh --yolo --trace .
-
-# Bedrock with tracing
-./claudeb.sh --trace .
-```
-
-**Features:**
-- Logs all Claude API requests and responses
-- Saves trace files to `.claude-trace/` directory
-- Includes full request/response headers and timing
-- Useful for debugging authentication issues and API usage
-
-## Common Development Commands
-
-### Building and Testing
-```bash
-# Build Docker image
-make build
-
-# Rebuild without cache
-make rebuild
-
-# Test the built image
-make test
-
-# Test with current directory mounted
-make test-local
-
-# Build and test in one command
-make build-test
-
-# Open development shell
-make dev
-```
-
-### Running Claude
-```bash
-# Quick YOLO mode (recommended)
-./claude-yolo .                   # Local script
-claude-yolo .                     # If installed globally
-
-# Full wrapper options
-./claude.sh --yolo .              # YOLO mode in Docker
-./claude.sh .                     # Local mode (no Docker)
-./claude.sh --api-key .           # Use API key auth
-./claude.sh --bedrock .           # Use AWS Bedrock
-./claude.sh --vertex .            # Use Google Vertex AI
-./claude.sh --shell               # Open shell in container
-./claude.sh --trace .             # Enable request tracing
-```
-
-### Container Management
-```bash
-# Clean up Docker artifacts
-make clean
-
-# Deep clean including BuildKit cache
-make clean-all
-
-# Show image information and size
-make info
-
-# Check build context size
-make context-size
-
-# Lint Dockerfile (requires hadolint)
-make lint
-```
-
-## Debug and Troubleshooting Commands
-
-### Authentication Debugging
-```bash
-# Test different auth methods with tracing
-./claude.sh --claude --trace .    # OAuth debugging
-./claude.sh --api-key --trace .   # API key debugging
-./claude.sh --bedrock --trace .   # Bedrock debugging
-
-# Use dedicated Bedrock helper script
-./claudeb.sh --trace .            # Bedrock with model conversion
-```
-
-### Container Debugging
-```bash
-# Open shell in container for debugging
-make shell
-
-# Check container environment
-docker run --rm -it lroolle/claude-code-yolo:latest bash -c "env | sort"
-
-# Verify development tools
-docker run --rm lroolle/claude-code-yolo:latest bash -c 'python --version && node --version && go version'
-```

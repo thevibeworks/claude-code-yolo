@@ -117,6 +117,11 @@ claude-yolo -v ~/.terraform.d:/root/.terraform.d
 - **Request Tracing**: Debug with `--trace` flag using claude-trace
 - **Docker Socket**: Optional mounting with `CLAUDE_YOLO_DOCKER_SOCKET=true`
 
+
+### Request Tracing by @badlogic `claude-trace`
+
+Claude Code YOLO integrates with [claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace) for detailed request logging and debugging.
+
 ## Docker Images
 
 Claude Code YOLO is available from multiple container registries:

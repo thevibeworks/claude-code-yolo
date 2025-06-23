@@ -5,6 +5,24 @@
 
 ## Issue Analysis: 2025-06-23
 
+### [enhancement-completed] Claude Code Review workflow simplification
+
+**Problem**: Overcomplicated workflow with manual duplicate detection using GitHub CLI.
+
+**Solution**: Adopted ChatGPT pattern with critical fixes:
+- `pull_request_target` → enables secret access for `ANTHROPIC_API_KEY`
+- Concurrency groups → automatic duplicate prevention 
+- Proper checkout ref → works for comment-triggered reviews
+- Removed complex GitHub CLI duplicate detection logic
+
+**Result**: 50% fewer lines, more reliable, follows GitHub best practices.
+
+**Status**: ✅ **COMPLETED**
+
+---
+
+## Issue Analysis: 2025-06-23
+
 ### [enhancement-completed] Clean startup message redesign
 
 **Problem**: Startup messages were excessively verbose (65+ lines) with poor UX.

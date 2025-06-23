@@ -1,0 +1,91 @@
+# 1. **Trigger strategy**
+
+#    * **Auto review**: run on `pull_request_target` only when the PR is **opened** or **re-opened**—not on every push (`synchronize`).
+#    * **Opt-in re-review**: listen on `issue_comment` and run again only if the comment body contains `/claude-review`.
+#    * Optional `workflow_dispatch` makes the “Run workflow” button available in the UI.
+
+# 2. **One job per PR at a time**
+
+#    * Use `concurrency.group = "claude-review-${PR_NUMBER}"`; `cancel-in-progress: false` lets earlier runs finish while preventing duplicate parallel runs.
+
+# 3. **Job guard**
+
+#    * Single job guarded with an `if:` expression so it fires only for the two allowed scenarios above.
+
+# 4. **Minimal permissions**
+
+#    * `pull-requests: write` → post review comments.
+#    * `issues: write` → reply to the `/claude-review` trigger comment.
+
+# 5. **Run the Claude action**
+
+#    * Swap the placeholder `anthropic-ai/claude-code-review@v1` for whatever revision you actually use.
+
+# 6. **(Optional) Reply to manual trigger**
+
+#    * A short “review queued” reply helps contributors know their command was accepted.
+
+# The finished workflow file **`.github/workflows/claude-review.yml`** is now in the canvas—feel free to tweak the action version, the trigger phrase, or remove the reply step if you don’t need it.
+
+# ---
+
+# Auto‑run Claude code review exactly once per PR, and allow opt‑in re‑reviews
+name: "Claude Code Review"
+
+on:
+  # --- automatic run ---
+  # Trigger only when a PR is first opened or later re‑opened.
+  pull_request_target:
+    types: [opened, reopened]
+
+  # --- manual re‑review ---
+  # Listen for a PR comment that contains the magic string "/claude-review".
+  issue_comment:
+    types: [created]
+
+  # Optional: enable the "Run workflow" button in the Actions tab.
+  workflow_dispatch:
+
+# Ensure one review job per PR runs at a time under the same key
+concurrency:
+  group: "claude-review-${{ github.event.pull_request.number || github.event.issue.number }}"
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # Gate so we only execute on our two allowed scenarios
+    if: |
+      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '/claude-review'))
+
+    permissions:
+      pull-requests: write   # allow action to post PR comments
+      issues: write          # allow replying to the trigger comment
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use the PR head SHA when the workflow is comment‑triggered
+          ref: ${{ github.event.pull_request.head.sha || github.event.pull_request.merge_commit_sha }}
+
+      - name: 🤖 Run Claude review
+        # Replace with the actual action that invokes Claude
+        uses: anthropic-ai/claude-code-review@v1
+        with:
+          pull_request: "${{ github.event.pull_request.number || github.event.issue.number }}"
+
+      - name: 🗨️  Acknowledge manual trigger
+        if: github.event_name == 'issue_comment'
+        env:
+          COMMENT_ID: "${{ github.event.comment.id }}"
+        run: |
+          gh api \
+            -X POST \
+            -F body='👋 Claude review queued.' \
+            /repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/replies
