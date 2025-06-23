@@ -9,9 +9,11 @@
 
 **Problem**: `sudo claude-yolo` fails with "usermod: UID '0' already exists" error.
 
-**Solution**: Detect UID=0 and GID=0 cases independently, use fallback UID/GID 1000.
+**Root Cause**: Can't reassign existing UID 0 (root) to claude user.
 
-**Security Fix**: Prevent container user getting root group when host has GID=0 but UID≠0.
+**Security Fix**: Handle UID=0 and GID=0 independently to prevent root group assignment.
+
+**Solution**: Use fallback UID/GID 1000 for proper file ownership with existing collision handling.
 
 **Status**: ✅ **COMPLETED** - PR #22
 
