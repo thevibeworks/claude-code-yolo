@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2025-06-23
+
 ### Added
 - Unified logging system for improved UX
 - Clean output by default showing only authentication method
@@ -27,6 +29,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 - Docker build caching in GitHub Actions (dual GHA + registry cache strategy)
 
+## [0.2.3] - 2025-06-23
+
+### Added
+- Dynamic fallback UID/GID selection for root users
+
+### Fixed
+- Handle UID 0 (root user) case in docker-entrypoint.sh
+- Add explicit github_token to claude-code-review action
+- Handle UID=0 and GID=0 independently for security
+
+### Changed
+- Simplify root user handling with hardcoded 1000 fallback
+- Remove redundant comments in UID/GID handling
+- Run Claude review once per PR and on manual trigger
+
+### Performance
+- Docker build caching improvements in GitHub Actions
+
+### Documentation
+- Update logs and changelog for issue #19 caching fix
+- Clarify root cause and solution for UID 0 handling
+- Add OIDC token fix to dev log
+
+## [0.2.2] - 2025-06-23
+
+### Added
+- Docker image update to ghcr.io with fallback to Docker Hub
+- Note when falling back to Docker Hub image in installer
+
+### Fixed
+- Set shellcheck to error severity to prevent CI blocking
+
+### Documentation
+- Improve usage examples across all documentation
+
+## [0.2.1] - 2025-06-23
+
+### Fixed
+- Move shellcheck to CI workflow, remove from release
+
+## [0.2.0] - 2025-06-23
+
+### Added
+- --verbose flag to show environment info and pass to Docker
 
 ## [0.1.0] - 2025-06-21
 
