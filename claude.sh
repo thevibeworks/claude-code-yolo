@@ -4,8 +4,8 @@ set -e
 # Claude Starter Script with Docker Support
 # Runs Claude Code CLI locally or in a Docker container for safe execution
 
-VERSION="0.2.0"
-DOCKER_IMAGE="${DOCKER_IMAGE:-lroolle/claude-code-yolo}"
+VERSION="0.2.2"
+DOCKER_IMAGE="${DOCKER_IMAGE:-ghcr.io/lroolle/claude-code-yolo}"
 DOCKER_TAG="${DOCKER_TAG:-latest}"
 
 DEFAULT_ANTHROPIC_MODEL="sonnet-4"

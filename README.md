@@ -117,6 +117,21 @@ claude-yolo -v ~/.terraform.d:/root/.terraform.d
 - **Request Tracing**: Debug with `--trace` flag using claude-trace
 - **Docker Socket**: Optional mounting with `CLAUDE_YOLO_DOCKER_SOCKET=true`
 
+## Docker Images
+
+Claude Code YOLO is available from multiple container registries:
+
+```bash
+# GitHub Container Registry (recommended, primary)
+docker pull ghcr.io/lroolle/claude-code-yolo:latest
+
+# Docker Hub (fallback)
+docker pull lroolle/claude-code-yolo:latest
+
+# Use specific registry
+DOCKER_IMAGE=lroolle/claude-code-yolo claude-yolo
+```
+
 ## Manual Setup
 
 ```bash

@@ -5,7 +5,7 @@ set -e
 
 SCRIPT_NAME="claude.sh"
 YOLO_WRAPPER="claude-yolo"
-DOCKER_IMAGE="lroolle/claude-code-yolo:latest"
+DOCKER_IMAGE="ghcr.io/lroolle/claude-code-yolo:latest"
 GITHUB_RAW="https://raw.githubusercontent.com/lroolle/claude-code-yolo/main"
 
 echo "Claude Code YOLO Installer"
@@ -46,7 +46,11 @@ chmod +x "$INSTALL_DIR/$YOLO_WRAPPER"
 # Pull Docker image
 echo ""
 echo "Pulling Docker image..."
-docker pull "$DOCKER_IMAGE"
+if ! docker pull "$DOCKER_IMAGE"; then
+    echo "Failed to pull from GitHub Container Registry, trying Docker Hub..."
+    DOCKER_IMAGE_FALLBACK="lroolle/claude-code-yolo:latest"
+    docker pull "$DOCKER_IMAGE_FALLBACK"
+fi
 
 # Success message
 echo ""
