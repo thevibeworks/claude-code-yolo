@@ -5,6 +5,36 @@
 
 ## Issue Analysis: 2025-06-23
 
+### [bug-fixed] Root user (UID 0) handling in docker-entrypoint.sh
+
+**Problem**: `sudo claude-yolo` fails with "usermod: UID '0' already exists" error.
+
+**Root Cause**: Can't reassign existing UID 0 (root) to claude user.
+
+**Security Fix**: Handle UID=0 and GID=0 independently to prevent root group assignment.
+
+**Solution**: Use fallback UID/GID 1000 for proper file ownership with existing collision handling.
+
+**Status**: ✅ **COMPLETED** - PR #22
+
+---
+
+## Issue Analysis: 2025-06-23
+
+### [bug-fixed] Claude Code Review OIDC token authentication error
+
+**Problem**: CI failing with "Invalid OIDC token" after changing permissions to write.
+
+**Solution**: Added explicit `github_token: ${{ secrets.GITHUB_TOKEN }}` to force direct token auth.
+
+**Cause**: Write permissions trigger GitHub App auth by default, but no App configured.
+
+**Status**: ✅ **COMPLETED**
+
+---
+
+## Issue Analysis: 2025-06-23
+
 ### [enhancement-completed] Claude Code Review workflow simplification
 
 **Problem**: Overcomplicated workflow with manual duplicate detection using GitHub CLI.
