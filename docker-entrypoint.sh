@@ -59,6 +59,17 @@ setup_nonroot_user() {
     local current_uid=$(id -u "$CLAUDE_USER")
     local current_gid=$(id -g "$CLAUDE_USER")
 
+    # Handle UID=0 case (host user is root)
+    if [ "$CLAUDE_UID" = "0" ]; then
+        echo "[entrypoint] WARNING: Host user is root (UID=0). Using fallback UID 1000 for security."
+        echo "[entrypoint] Container runs as non-root claude user but files will be owned by root on host."
+        CLAUDE_UID=1000
+        # Also use fallback GID if it was 0
+        if [ "$CLAUDE_GID" = "0" ]; then
+            CLAUDE_GID=1000
+        fi
+    fi
+
     if [ "$CLAUDE_GID" != "$current_gid" ]; then
         [ "$VERBOSE" = "true" ] && echo "[entrypoint] updating $CLAUDE_USER GID: $current_gid -> $CLAUDE_GID"
         if getent group "$CLAUDE_GID" >/dev/null 2>&1; then
