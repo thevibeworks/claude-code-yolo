@@ -50,6 +50,10 @@ if ! docker pull "$DOCKER_IMAGE"; then
     echo "Failed to pull from GitHub Container Registry, trying Docker Hub..."
     DOCKER_IMAGE_FALLBACK="lroolle/claude-code-yolo:latest"
     docker pull "$DOCKER_IMAGE_FALLBACK"
+    echo ""
+    echo -e "\033[93mNOTE: Using Docker Hub fallback image\033[0m"
+    echo "To use Docker Hub by default, set: export DOCKER_IMAGE=lroolle/claude-code-yolo"
+    echo "Add this to your shell profile (.bashrc, .zshrc) to make it permanent"
 fi
 
 # Success message
