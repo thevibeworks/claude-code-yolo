@@ -1,13 +1,23 @@
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## We're following Issue-Based Development (IBD) workflow
+1. Before running any Git/GitHub CLI `Bash` command (`git commit`, `gh issue create`, `gh pr create`, etc.), open the corresponding file in @workflows to review required steps.
+2. Always apply the exact templates or conventions from the following files:
+   - @workflows/GITHUB-ISSUE.md → issues
+   - @workflows/GIT-COMMIT.md  → commits
+   - @workflows/GITHUB-PR.md   → pull requests
+3. Keep one branch per issue; merging the PR must auto-close its linked issue.
+
 
 ## PROJECT STRUCTURE
 
 ```
 claude-code-yolo/
 ├── CLAUDE.md                  # This file - project guidance for Claude
-├── README.md                  # Main documentation 
+├── README.md                  # Main documentation
 ├── CHANGELOG.md               # Version history
 ├── DEV-LOGS.md               # Development journal
 ├── TODO.md                   # Task tracking
@@ -31,8 +41,8 @@ claude-code-yolo/
 │
 ├── workflows/                # Development workflows
 │   ├── GIT-COMMIT.md        # Commit guidelines
+│   ├── GITHUB-ISSUE.md      # Issue creation guidelines
 │   ├── GITHUB-PR.md         # PR creation process
-│   └── PRE-RELEASE.md       # Release checklist
 │
 └── references/              # Documentation and research
     ├── chats/               # AI conversation logs
