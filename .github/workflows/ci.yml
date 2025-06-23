@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  shellcheck:
+    name: Shell Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: "."
+          format: gcc
+          severity: warning
+
+  test:
+    name: Basic Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test help output
+        run: |
+          ./claude.sh --help
+          ./claude-yolo --help
+
+      - name: Test version output
+        run: |
+          ./claude.sh --version
+          ./claude-yolo --version

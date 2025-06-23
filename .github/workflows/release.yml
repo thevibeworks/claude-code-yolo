@@ -16,24 +16,9 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  shellcheck:
-    name: Shell Linting
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: "."
-          format: gcc
-          severity: warning
-
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: shellcheck
     permissions:
       contents: read
       packages: write
