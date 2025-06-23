@@ -19,7 +19,7 @@ jobs:
         with:
           scandir: "."
           format: gcc
-          severity: warning
+          severity: error
 
   test:
     name: Basic Tests
