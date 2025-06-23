@@ -34,14 +34,13 @@
 ---
 
 ## Issue Analysis: 2025-06-23
-
 ### [enhancement-completed] Claude Code Review workflow simplification
 
 **Problem**: Overcomplicated workflow with manual duplicate detection using GitHub CLI.
 
 **Solution**: Adopted ChatGPT pattern with critical fixes:
 - `pull_request_target` → enables secret access for `ANTHROPIC_API_KEY`
-- Concurrency groups → automatic duplicate prevention 
+- Concurrency groups → automatic duplicate prevention
 - Proper checkout ref → works for comment-triggered reviews
 - Removed complex GitHub CLI duplicate detection logic
 
