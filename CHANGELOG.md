@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - claude-trace --run-with syntax (removed unnecessary "claude" argument)
 - Container shortcuts now properly exit after --ps command
 
+### Performance
+- Docker build caching in GitHub Actions (dual GHA + registry cache strategy)
+- Added cache warming via CI builds on PRs to accelerate release builds
+
 ### Changed
 - Consolidated all claude-yolo argument parsing through single parse_args() function
 - Enhanced claude-trace argument injection for proper --dangerously-skip-permissions placement

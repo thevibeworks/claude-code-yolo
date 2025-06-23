@@ -5,6 +5,23 @@
 
 ## Issue Analysis: 2025-06-23
 
+### [perf-optimized] Docker build caching in GitHub Actions (Issue #19)
+
+**Problem**: Docker image builds taking 49+ minutes due to lack of effective caching.
+
+**Root Cause**: Limited GitHub Actions cache scope, no registry cache, no cache warming.
+
+**Solution**: Dual caching strategy + cache warming
+- Registry cache persists across branches/runners
+- CI job warms cache on PRs for release builds
+- Combined GHA + registry cache maximizes hit rates
+
+**Status**: ✅ **COMPLETED**
+
+---
+
+## Issue Analysis: 2025-06-23
+
 ### [bug-fixed] Root user (UID 0) handling in docker-entrypoint.sh
 
 **Problem**: `sudo claude-yolo` fails with "usermod: UID '0' already exists" error.
