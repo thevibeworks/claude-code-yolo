@@ -92,6 +92,7 @@ setup_nonroot_user() {
     # Make /root fully accessible - Claude needs permissions to work
     chmod 755 /root 2>/dev/null || true
 
+    # TODO: claude does support CLAUDE_CONFIG_DIR
     # Essential: Handle .claude directory
     if [ -d "/root/.claude" ]; then
         [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .claude"
@@ -111,7 +112,6 @@ setup_nonroot_user() {
         [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .config/gcloud"
         mkdir -p "$CLAUDE_HOME/.config"
         chmod -R 755 /root/.config/gcloud 2>/dev/null || true
-        ln -sfn /root/.config/gcloud "$CLAUDE_HOME/.config/gcloud"
     fi
 
     # Common: AWS credentials
@@ -128,7 +128,7 @@ setup_nonroot_user() {
         if [ -e "$item" ] && [ "$item" != "/root/." ] && [ "$item" != "/root/.." ]; then
             basename_item=$(basename "$item")
             case "$basename_item" in
-            .claude | .aws | .config)
+            .claude | .aws )
                 continue
                 ;;
             *)
