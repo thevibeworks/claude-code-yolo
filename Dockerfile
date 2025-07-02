@@ -15,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
     TZ=UTC \
-    PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:/usr/local/rustup/bin:$PATH
+    PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -26,15 +26,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ca-certificates curl wget git gnupg lsb-release locales sudo \
         software-properties-common build-essential pkg-config libssl-dev \
         unzip zip bzip2 xz-utils tini gosu less man-db \
-        python3-dev libffi-dev libxml2-dev libxslt1-dev libyaml-dev \
-        jq yq httpie tree fd-find ripgrep fzf htop lsof \
-        vim neovim nano make cmake gcc g++ clang llvm \
-        openssh-client rsync iputils-ping netcat-openbsd dnsutils \
-        traceroute tcpdump strace ltrace gdb valgrind \
-        tig bat eza tmux screen direnv \
-        clang-format clang-tidy cppcheck shellcheck \
-        black mypy pylint flake8 isort \
-        zsh && \
+        python3-dev libffi-dev \
+        jq ripgrep lsof tree make gcc g++ \
+        openssh-client rsync \
+        shellcheck bat fd-find \
+        git procps psmisc && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -51,8 +47,17 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
-    npm install -g npm@latest yarn pnpm && \
+    apt-get -y clean && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /usr/local/share/npm-global
+ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
+
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm install -g npm@latest pnpm && \
     npm cache clean --force
+
+RUN curl -fsSL https://bun.sh/install | bash && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
@@ -62,12 +67,6 @@ RUN --mount=type=cache,target=/tmp/go-cache,sharing=locked \
     cd /tmp/go-cache && \
     wget -q https://go.dev/dl/go1.22.0.linux-${GO_ARCH}.tar.gz && \
     tar -C /usr/local -xzf go1.22.0.linux-${GO_ARCH}.tar.gz
-
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && \
-    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
 
 FROM runtimes AS cloud-tools
 
@@ -111,17 +110,19 @@ RUN --mount=type=cache,target=/tmp/delta-cache,sharing=locked \
     mv delta-0.18.2-${DELTA_ARCH}-unknown-linux-gnu/delta /usr/local/bin/ && \
     rm -rf delta-0.18.2-${DELTA_ARCH}-unknown-linux-gnu*
 
-RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm config set prefix /usr/local && \
-    npm install -g @anthropic-ai/claude-code@latest @mariozechner/claude-trace && \
-    npm cache clean --force
-
 ENV NPM_CONFIG_FETCH_RETRIES=5 \
     NPM_CONFIG_FETCH_RETRY_FACTOR=2 \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=10000
 
+# Claude Code installation - separate layer for easier version management
+FROM tools AS claude-tools
+ARG CLAUDE_CODE_VERSION=0.3.4
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @mariozechner/claude-trace && \
+    npm cache clean --force
+
 # Final stage with shell setup
-FROM tools AS final
+FROM claude-tools AS final
 
 # Create non-root user for Claude execution
 # Using 1001 as default to avoid conflicts with ubuntu user (usually 1000)
@@ -131,37 +132,18 @@ ENV CLAUDE_USER=claude \
     CLAUDE_HOME=/home/claude
 
 RUN groupadd -g "$CLAUDE_GID" "$CLAUDE_USER" && \
-    useradd -u "$CLAUDE_UID" -g "$CLAUDE_GID" -m -s /bin/zsh "$CLAUDE_USER" && \
+    useradd -u "$CLAUDE_UID" -g "$CLAUDE_GID" -m -s /bin/bash "$CLAUDE_USER" && \
     # Allow claude user to run sudo without password for development convenience
     echo "$CLAUDE_USER ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$CLAUDE_USER" && \
     chmod 440 "/etc/sudoers.d/$CLAUDE_USER"
 
-# Install Oh My Zsh and plugins for root
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
-    git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions && \
-    git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+# Give claude user ownership of npm-global directory
+RUN chown -R "$CLAUDE_UID:$CLAUDE_GID" /usr/local/share/npm-global
 
-# Install Oh My Zsh for claude-user
-USER $CLAUDE_USER
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
-    git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions && \
-    git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-USER root
-
-# Create optimized .zshrc for root
-RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > ~/.zshrc && \
-    echo 'ZSH_THEME="robbyrussell"' >> ~/.zshrc && \
-    echo 'plugins=(git docker python golang rust node npm yarn aws zsh-autosuggestions zsh-syntax-highlighting)' >> ~/.zshrc && \
-    echo 'source $ZSH/oh-my-zsh.sh' >> ~/.zshrc && \
-    echo 'export PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH' >> ~/.zshrc
-
-# Create optimized .zshrc for claude-user
-RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > "$CLAUDE_HOME/.zshrc" && \
-    echo 'ZSH_THEME="robbyrussell"' >> "$CLAUDE_HOME/.zshrc" && \
-    echo 'plugins=(git docker python golang rust node npm yarn aws zsh-autosuggestions zsh-syntax-highlighting)' >> "$CLAUDE_HOME/.zshrc" && \
-    echo 'source $ZSH/oh-my-zsh.sh' >> "$CLAUDE_HOME/.zshrc" && \
-    echo 'export PATH=$HOME/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH' >> "$CLAUDE_HOME/.zshrc" && \
-    chown "$CLAUDE_USER:$CLAUDE_USER" "$CLAUDE_HOME/.zshrc"
+# Simple bashrc setup
+RUN echo 'export PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH' >> ~/.bashrc
+RUN echo 'export PATH=$HOME/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH' >> "$CLAUDE_HOME/.bashrc" && \
+    chown "$CLAUDE_USER:$CLAUDE_USER" "$CLAUDE_HOME/.bashrc"
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
