@@ -37,3 +37,8 @@ jobs:
         run: |
           ./claude.sh --version
           ./claude-yolo --version
+
+      - name: Check version consistency
+        run: |
+          chmod +x scripts/version-check.sh
+          ./scripts/version-check.sh

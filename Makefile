@@ -1,5 +1,5 @@
 
-IMAGE_NAME := lroolle/claude-code-yolo
+IMAGE_NAME := ghcr.io/lroolle/claude-code-yolo
 TAG := latest
 CONTAINER_NAME := claude-code-yolo-$(shell basename $(PWD))-$(shell date +%s)
 
@@ -123,6 +123,34 @@ lint:
 		echo "   Or run in Docker: docker run --rm -i hadolint/hadolint < Dockerfile"; \
 	fi
 
+.PHONY: version-check
+version-check:
+	@./scripts/version-check.sh
+
+.PHONY: release
+release:
+	@if [ -z "$(TYPE)" ]; then \
+		echo "Usage: make release TYPE=patch|minor|major"; \
+		echo "Examples:"; \
+		echo "  make release TYPE=patch  # 0.2.6 -> 0.2.7"; \
+		echo "  make release TYPE=minor  # 0.2.7 -> 0.3.0"; \
+		echo "  make release TYPE=major  # 0.3.0 -> 1.0.0"; \
+		exit 1; \
+	fi
+	@./scripts/release.sh $(TYPE)
+
+.PHONY: release-patch
+release-patch:
+	@./scripts/release.sh patch
+
+.PHONY: release-minor
+release-minor:
+	@./scripts/release.sh minor
+
+.PHONY: release-major
+release-major:
+	@./scripts/release.sh major
+
 .PHONY: help
 help:
 	@echo "Claude Code YOLO - Docker Build Shortcuts"
@@ -144,3 +172,7 @@ help:
 	@echo "  make test                     # Test image functionality"
 	@echo "  make TAG=dev build            # Build with custom tag"
 	@echo "  make clean                    # Clean up Docker artifacts"
+	@echo "  make version-check            # Check version consistency"
+	@echo "  make release TYPE=patch       # Create patch release"
+	@echo "  make release-minor            # Create minor release"
+	@echo "  make release-major            # Create major release"
