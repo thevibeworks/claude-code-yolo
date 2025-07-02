@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-07-02
+
+### Changed
+- Streamlined Docker image build process
+- Updated npm global installation path
+- Enhanced CI pipeline with release workflow and version check
+- Improved container registry configuration
+
 ## [0.2.6] - 2025-06-24
 
 ### Fixed
