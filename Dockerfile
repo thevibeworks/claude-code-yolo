@@ -116,7 +116,7 @@ ENV NPM_CONFIG_FETCH_RETRIES=5 \
 
 # Claude Code installation - separate layer for easier version management
 FROM tools AS claude-tools
-ARG CLAUDE_CODE_VERSION=0.3.4
+ARG CLAUDE_CODE_VERSION=1.0.40
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @mariozechner/claude-trace && \
     npm cache clean --force
