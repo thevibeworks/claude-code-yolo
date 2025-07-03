@@ -129,7 +129,7 @@ setup_nonroot_user() {
         if [ -e "$item" ] && [ "$item" != "/root/." ] && [ "$item" != "/root/.." ]; then
             basename_item=$(basename "$item")
             case "$basename_item" in
-            .claude | .aws | .config )
+            .claude | .aws)
                 continue
                 ;;
             *)
