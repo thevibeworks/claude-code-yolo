@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         jq ripgrep lsof tree make gcc g++ \
         openssh-client rsync \
         shellcheck bat fd-find \
-        git procps psmisc && \
+        git procps psmisc zsh && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -132,7 +132,7 @@ ENV CLAUDE_USER=claude \
     CLAUDE_HOME=/home/claude
 
 RUN groupadd -g "$CLAUDE_GID" "$CLAUDE_USER" && \
-    useradd -u "$CLAUDE_UID" -g "$CLAUDE_GID" -m -s /bin/bash "$CLAUDE_USER" && \
+    useradd -u "$CLAUDE_UID" -g "$CLAUDE_GID" -m -s /bin/zsh "$CLAUDE_USER" && \
     # Allow claude user to run sudo without password for development convenience
     echo "$CLAUDE_USER ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$CLAUDE_USER" && \
     chmod 440 "/etc/sudoers.d/$CLAUDE_USER"
@@ -140,10 +140,10 @@ RUN groupadd -g "$CLAUDE_GID" "$CLAUDE_USER" && \
 # Give claude user ownership of npm-global directory
 RUN chown -R "$CLAUDE_UID:$CLAUDE_GID" /usr/local/share/npm-global
 
-# Simple bashrc setup
-RUN echo 'export PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH' >> ~/.bashrc
-RUN echo 'export PATH=$HOME/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH' >> "$CLAUDE_HOME/.bashrc" && \
-    chown "$CLAUDE_USER:$CLAUDE_USER" "$CLAUDE_HOME/.bashrc"
+# Simple zsh setup
+RUN echo 'export PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH' >> ~/.zshrc
+RUN echo 'export PATH=$HOME/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH' >> "$CLAUDE_HOME/.zshrc" && \
+    chown "$CLAUDE_USER:$CLAUDE_USER" "$CLAUDE_HOME/.zshrc"
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
