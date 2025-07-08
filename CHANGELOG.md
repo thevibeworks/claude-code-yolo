@@ -16,8 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2025-07-08
 
+### Added
+- Unified `--auth-with` pattern for authentication method selection
+- Environment variable pass-through with `-e` flag support
+- Custom config directory support
+- Controlled mount security with proper read-only handling
+
 ### Changed
-- Refactored auth system and environment handling
+- Complete auth system refactor with proper model handling
+- Docker architecture: moved to `/home/claude` for better permissions
+- Environment variable standardization: `CLAUDE_YOLO_*` → `CCYOLO_*`
+- Streamlined docker-entrypoint.sh with improved error handling
+
+### Fixed
+- Docker permission issues with auth file handling
+- Security improvements with controlled mounts
 
 ## [0.3.0] - 2025-07-02
 
