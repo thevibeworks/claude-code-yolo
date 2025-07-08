@@ -6,9 +6,8 @@ Release workflow for Claude Code to execute when user runs `make release-patch|m
 
 When user runs release command, Claude Code should:
 
-1. **Check prerequisites**: 
+1. **Check prerequisites**:
    - Clean working directory
-   - On main/master branch
    - Upstream synced (`git fetch && git status`)
    - CI passing (if applicable)
 
@@ -16,12 +15,12 @@ When user runs release command, Claude Code should:
 
 3. **Calculate new version**: Increment based on patch/minor/major semantic versioning
 
-4. **Generate changelog**: 
+4. **Generate changelog**:
    - Use `git log --oneline --no-merges v<last>..HEAD`
    - Group by commit prefixes: feat/fix/chore/docs
    - Follow CLAUDE.md style (concise, minimal markdown)
 
-5. **Update files**: 
+5. **Update files**:
    - Update VERSION in claude.sh
    - Add changelog entry to CHANGELOG.md with date
    - Update version in any other files (Makefile, package.json if exists)

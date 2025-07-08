@@ -38,8 +38,10 @@ main() {
     
     check_prerequisites
     
-    # Let Claude Code handle the intelligent workflow with auto-proceed
-    "$CLAUDE_YOLO" -p "Execute the release workflow from workflows/RELEASE.md for a **$release_type** release. 
+    # Let Claude Code handle the intelligent workflow
+    local claude_cmd="${CLAUDE_YOLO_RELEASE_CMD:-$CLAUDE_YOLO}"
+    
+    $claude_cmd "Execute the release workflow from workflows/RELEASE.md for a **$release_type** release.
 
 Release type: $release_type
 Current working directory: $(pwd)
