@@ -15,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
     TZ=UTC \
-    PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH
+    PATH=/root/.local/bin:/usr/local/go/bin:$PATH
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -29,7 +29,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         python3-dev libffi-dev \
         jq ripgrep lsof tree make gcc g++ \
         openssh-client rsync \
-        shellcheck bat fd-find \
+        shellcheck bat fd-find silversearcher-ag \
+        vim \
         git procps psmisc zsh && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
@@ -48,9 +49,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     apt-get -y clean && rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /usr/local/share/npm-global
-ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm install -g npm@latest pnpm && \
@@ -114,15 +112,8 @@ ENV NPM_CONFIG_FETCH_RETRIES=5 \
     NPM_CONFIG_FETCH_RETRY_FACTOR=2 \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=10000
 
-# Claude Code installation - separate layer for easier version management
-FROM tools AS claude-tools
-ARG CLAUDE_CODE_VERSION=1.0.41
-RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @mariozechner/claude-trace && \
-    npm cache clean --force
-
 # Final stage with shell setup
-FROM claude-tools AS final
+FROM tools AS final
 
 # Create non-root user for Claude execution
 # Using 1001 as default to avoid conflicts with ubuntu user (usually 1000)
@@ -137,13 +128,29 @@ RUN groupadd -g "$CLAUDE_GID" "$CLAUDE_USER" && \
     echo "$CLAUDE_USER ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$CLAUDE_USER" && \
     chmod 440 "/etc/sudoers.d/$CLAUDE_USER"
 
-# Give claude user ownership of npm-global directory
-RUN chown -R "$CLAUDE_UID:$CLAUDE_GID" /usr/local/share/npm-global
+# Configure npm-global directory for claude user
+RUN mkdir -p "$CLAUDE_HOME/.npm-global" && \
+    chown -R "$CLAUDE_UID:$CLAUDE_GID" "$CLAUDE_HOME/.npm-global"
 
-# Simple zsh setup
-RUN echo 'export PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH' >> ~/.zshrc
-RUN echo 'export PATH=$HOME/.local/bin:/usr/local/go/bin:/usr/local/share/npm-global/bin:$PATH' >> "$CLAUDE_HOME/.zshrc" && \
-    chown "$CLAUDE_USER:$CLAUDE_USER" "$CLAUDE_HOME/.zshrc"
+# Set npm configuration for claude user and install Claude CLI
+USER $CLAUDE_USER
+ARG CLAUDE_CODE_VERSION=1.0.41
+RUN npm config set prefix "$CLAUDE_HOME/.npm-global" && \
+    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @mariozechner/claude-trace && \
+    npm cache clean --force
+
+RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh "$CLAUDE_HOME/.oh-my-zsh" && \
+    git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$CLAUDE_HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" && \
+    git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git "$CLAUDE_HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+
+# Create .zshrc for claude user
+RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > "$CLAUDE_HOME/.zshrc" && \
+    echo 'ZSH_THEME="robbyrussell"' >> "$CLAUDE_HOME/.zshrc" && \
+    echo 'plugins=(git docker python golang node npm aws zsh-autosuggestions zsh-syntax-highlighting)' >> "$CLAUDE_HOME/.zshrc" && \
+    echo 'source $ZSH/oh-my-zsh.sh' >> "$CLAUDE_HOME/.zshrc" && \
+    echo 'export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:/usr/local/go/bin:$PATH' >> "$CLAUDE_HOME/.zshrc"
+
+USER root
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
