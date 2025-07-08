@@ -1,7 +1,129 @@
 # Development Logs
-- Prepend new entries with `## Issue Analysis: YYYY-MM-DD`.
+- Prepend new entries with `## Dev Log: YYYY-MM-DD`.
+- Reference issue numbers in the format `#<issue-number>` for easy linking.
 - We write or explain to the damn point. Be clear, be super concise - no fluff, no hand-holding, no repeating.
 - Minimal markdown markers, no unnecessary formatting, minimal unicode emojis.
+
+## Dev Log: 2025-07-09
+
+### [enhancement-completed] Auth system overhaul and environment handling
+
+**Problem**: Messy auth flags, poor environment handling, inconsistent Docker mounts.
+
+**Solution**: 
+- Unified auth with `--auth-with` pattern (claude|api-key|bedrock|vertex)
+- Proper environment var handling with `-e` flag
+- Controlled auth directory mounting with explicit permissions
+- Smart model name handling for each auth mode
+
+**Technical**:
+- Freed -v for Docker volume mounts (was conflicting with --vertex)
+- Added model name translation for API key mode
+- Implemented proper ARN generation for Bedrock
+- Added environment detection for tools and auth status
+
+**Result**: Clean auth system, proper env handling, secure mounts.
+
+---
+
+## Dev Log: 2025-07-08
+
+### [enhancement-completed] Custom config directory and environment variable support
+
+**Problem**: Users needed separate auth sessions for different projects and better environment variable handling.
+
+**Root Cause**: Fixed path mounting made multi-project auth management difficult, no env var support in Docker mode.
+
+**Solution**: Added `--config` flag for custom Claude config home and `-e` flag for environment variables.
+
+**Implementation**:
+- `--config ~/work-claude` creates and mounts custom config directory
+- `-e NODE_ENV=dev` or `-e DEBUG` passes environment variables
+- Fixed npm-global path handling for claude user
+- Standardized mount paths to `/home/claude` instead of `/root`
+- Environment variable naming: `CLAUDE_YOLO_*` → `CCYOLO_*`
+- Auth isolation: unset conflicting auth variables per mode
+
+**Benefits**:
+- ✅ **Project isolation**: Separate auth sessions per project
+- ✅ **Environment control**: Full env var support in Docker mode
+- ✅ **Path consistency**: All mounts to `/home/claude`
+- ✅ **Auth reliability**: No cross-contamination between auth modes
+
+**Related**: Issues #46, #45 (configuration management)
+
+**Status**: ✅ **COMPLETED**
+
+---
+
+## Issue Analysis: 2025-07-04
+
+### [enhancement-analysis] Docker Compose configuration support
+
+**Problem**: Command line arguments become unmanageable for complex setups with multiple volumes and environment variables.
+
+**Current Pain Point**:
+```bash
+claude-yolo -v ~/.ssh:/root/.ssh:ro -v ~/Desktop/claude:/home/claude/.claude/ -v ~/.config/git:/home/claude/.config/git -v ../yolo-tools/scripts/barkme.sh:/home/claude/.local/bin/barkme.sh --continue
+```
+
+**Root Cause Analysis**:
+1. **CLI limitations**: Long command lines are hard to edit, share, version control
+2. **Multi-container needs**: Users want playwright services, MCP servers, other tools
+3. **Team collaboration**: Complex setups need to be shared across team members
+4. **Missing configuration hierarchy**: No project vs user vs local settings distinction
+
+**Proposed Solution**: Docker Compose integration following Claude Code's settings pattern
+
+**Configuration Hierarchy** (mirrors Claude Code's approach):
+```
+.claude/
+├── claude-yolo.local.yml    # Project-local (gitignored)
+├── claude-yolo.yml          # Project-shared (version controlled)
+└── ~/.claude/claude-yolo.yml # User global
+```
+
+**Multi-container Support**:
+```yaml
+# .claude/claude-yolo.yml
+version: '3.8'
+services:
+  claude:
+    image: ghcr.io/lroolle/claude-code-yolo:latest
+    volumes:
+      - ~/.ssh:/root/.ssh:ro
+      - ${PWD}:${PWD}
+    depends_on:
+      - playwright
+      - mcp-server
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.40.0-focal
+    ports: ["3000:3000"]
+
+  mcp-server:
+    image: custom/mcp-server:latest
+    ports: ["8080:8080"]
+```
+
+**Implementation Requirements**:
+1. **Auto-detection**: Check for compose files in precedence order
+2. **Backward compatibility**: Keep CLI args for simple cases
+3. **Multi-container orchestration**: Full Docker Compose integration
+4. **Settings coexistence**: Respect existing `.claude/settings.json` handling
+
+**Benefits**:
+- ✅ **Manageable configs**: No more insane command lines
+- ✅ **Team collaboration**: Share service definitions via git
+- ✅ **Multi-container**: Enable complex development environments
+- ✅ **Familiar patterns**: Follow Claude Code's settings hierarchy
+- ✅ **Version control**: Compose files are easily tracked
+
+**Related Issues**:
+- Issue #24: Environment variable support (partially addresses)
+- Issue #33: DevContainer support question (compose provides better solution)
+
+**Status**: Analysis complete, ready for implementation
 
 ## Issue Analysis: 2025-06-23
 

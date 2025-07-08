@@ -81,6 +81,14 @@ parse_args() {
             claude_args+=("-v" "$2")
             shift 2
             ;;
+        -e)
+            if [ -z "$2" ]; then
+                echo "Error: -e requires an argument" >&2
+                exit 1
+            fi
+            claude_args+=("-e" "$2")
+            shift 2
+            ;;
         --inspect)
             inspect_container
             # inspect_container calls exec, but add shift for safety
@@ -89,6 +97,14 @@ parse_args() {
         --ps)
             list_containers
             exit 0
+            ;;
+        --config | -c)
+            if [ -z "$2" ]; then
+                echo "Error: --config requires an argument" >&2
+                exit 1
+            fi
+            claude_args+=("--config" "$2")
+            shift 2
             ;;
         --help | -h)
             echo "Claude YOLO - Container Shortcuts"
@@ -99,17 +115,30 @@ parse_args() {
             echo "  --inspect     Enter running container as claude user"
             echo "  --ps          List containers for this project"
             echo ""
+            echo "Configuration:"
+            echo "  --config DIR  Use custom Claude config home instead of ~/.claude, ~/.claude.json "
+            echo "  -c DIR        Creates directory and .claude.json if they don't exist"
+            echo ""
             echo "Volume Mounting:"
             echo "  -v            Mount volume (Docker syntax: source:target[:options])"
             echo "                Can be used multiple times"
             echo ""
+            echo "Environment Variables:"
+            echo "  -e VAR=value  Set environment variable explicitly"
+            echo "  -e VAR        Pass environment variable from shell"
+            echo "                Can be used multiple times"
+            echo ""
             echo "Examples:"
-            echo "  claude-yolo                                  # Run Claude in YOLO mode"
-            echo "  claude-yolo --inspect                        # Quick access to running container"
-            echo "  claude-yolo --ps                             # See project containers"
-            echo "  claude-yolo -v ~/.gitconfig:/root/.gitconfig        # Mount git config"
-            echo "  claude-yolo -v ~/.ssh:/root/.ssh:ro                 # Mount SSH keys read-only"
+            echo "  claude-yolo                                         # Run Claude in YOLO mode"
+            echo "  CCYOLO_DOCKER_IMAGE=custom-image claude-yolo        # Use custom image"
+            echo "  claude-yolo --inspect                               # Quick access to running container"
+            echo "  claude-yolo --ps                                    # See project containers"
+            echo "  claude-yolo -v ~/.gitconfig:/home/claude/.gitconfig # Mount git config"
+            echo "  claude-yolo -v ~/.ssh:/home/claude/.ssh:ro          # Mount SSH keys read-only"
             echo "  claude-yolo -v ~/tools:/tools -v ~/data:/data       # Multiple mounts"
+            echo "  claude-yolo --config ~/work-claude                  # Custom config home"
+            echo "  claude-yolo -e NODE_ENV=dev -e DEBUG                # Set env vars"
+            echo "  export API_KEY=xyz; claude-yolo -e API_KEY          # Pass from shell"
             exit 0
             ;;
         *)
@@ -122,5 +151,4 @@ parse_args() {
     exec "$CLAUDE_SH" --yolo "${claude_args[@]}"
 }
 
-# All argument parsing handled by parse_args
 parse_args "$@"
