@@ -2,6 +2,7 @@
 IMAGE_NAME := ghcr.io/lroolle/claude-code-yolo
 TAG := latest
 CONTAINER_NAME := claude-code-yolo-$(shell basename $(PWD))-$(shell date +%s)
+CLAUDE_CODE_VERSION := 1.0.44
 
 export DOCKER_BUILDKIT := 1
 
@@ -10,25 +11,26 @@ export DOCKER_BUILDKIT := 1
 .PHONY: build
 build:
 	@echo "🔨 Building Claude Code YOLO Docker image..."
-	docker build -t $(IMAGE_NAME):$(TAG) .
+	docker build --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Build completed: $(IMAGE_NAME):$(TAG)"
 
 .PHONY: rebuild
 rebuild:
 	@echo "🔨 Rebuilding Claude Code YOLO Docker image (no cache)..."
-	docker build --no-cache -t $(IMAGE_NAME):$(TAG) .
+	docker build --no-cache --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Rebuild completed: $(IMAGE_NAME):$(TAG)"
 
 .PHONY: buildx
 buildx:
 	@echo "🔨 Building with docker buildx..."
-	docker buildx build --load -t $(IMAGE_NAME):$(TAG) .
+	docker buildx build --load --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Buildx completed: $(IMAGE_NAME):$(TAG)"
 
 .PHONY: buildx-multi
 buildx-multi:
 	@echo "🔨 Building multi-arch images for amd64 and arm64..."
 	docker buildx build --platform linux/amd64,linux/arm64 \
+		--build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) \
 		--push -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Multi-arch build completed and pushed: $(IMAGE_NAME):$(TAG)"
 
@@ -36,6 +38,7 @@ buildx-multi:
 buildx-multi-local:
 	@echo "🔨 Building multi-arch images locally..."
 	docker buildx build --platform linux/amd64,linux/arm64 \
+		--build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) \
 		-t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Multi-arch build completed locally: $(IMAGE_NAME):$(TAG)"
 
@@ -162,17 +165,19 @@ help:
 	@awk 'BEGIN {FS = ":.*##"; printf ""} /^[a-zA-Z_-]+:.*?##/ { printf "  %-15s %s\n", $$1, $$2 } /^##@/ { printf "\n%s\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "Environment variables:"
-	@echo "  IMAGE_NAME     Docker image name (default: $(IMAGE_NAME))"
-	@echo "  TAG            Docker image tag (default: $(TAG))"
+	@echo "  IMAGE_NAME           Docker image name (default: $(IMAGE_NAME))"
+	@echo "  TAG                  Docker image tag (default: $(TAG))"
+	@echo "  CLAUDE_CODE_VERSION  Claude CLI version (default: $(CLAUDE_CODE_VERSION))"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make build                    # Build the image"
-	@echo "  make rebuild                  # Rebuild without cache"
-	@echo "  make shell                    # Open shell in container"
-	@echo "  make test                     # Test image functionality"
-	@echo "  make TAG=dev build            # Build with custom tag"
-	@echo "  make clean                    # Clean up Docker artifacts"
-	@echo "  make version-check            # Check version consistency"
-	@echo "  make release TYPE=patch       # Create patch release"
-	@echo "  make release-minor            # Create minor release"
-	@echo "  make release-major            # Create major release"
+	@echo "  make build                                    # Build the image"
+	@echo "  make rebuild                                  # Rebuild without cache"
+	@echo "  make shell                                    # Open shell in container"
+	@echo "  make test                                     # Test image functionality"
+	@echo "  make TAG=dev build                            # Build with custom tag"
+	@echo "  make CLAUDE_CODE_VERSION=1.0.45 build        # Build with specific Claude version"
+	@echo "  make clean                                    # Clean up Docker artifacts"
+	@echo "  make version-check                            # Check version consistency"
+	@echo "  make release TYPE=patch                       # Create patch release"
+	@echo "  make release-minor                            # Create minor release"
+	@echo "  make release-major                            # Create major release"

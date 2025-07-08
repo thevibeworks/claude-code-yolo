@@ -14,9 +14,12 @@ check_prerequisites() {
         echo "Error: Working directory has uncommitted changes. Please commit or stash them first." >&2
         exit 1
     fi
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    CLAUDE_YOLO="$SCRIPT_DIR/../claude-yolo"
     
-    if ! command -v claude >/dev/null 2>&1; then
-        echo "Error: Claude CLI not found. Please install Claude Code." >&2
+    if [ ! -x "$CLAUDE_YOLO" ]; then
+        echo "Error: claude-yolo not found or not executable at $CLAUDE_YOLO" >&2
         exit 1
     fi
 }
@@ -35,8 +38,13 @@ main() {
     
     check_prerequisites
     
-    # Let Claude Code handle the intelligent workflow
-    claude "Execute the release workflow from workflows/RELEASE.md for a $release_type release. Follow all the steps exactly as documented."
+    # Let Claude Code handle the intelligent workflow with auto-proceed
+    "$CLAUDE_YOLO" -p "Execute the release workflow from workflows/RELEASE.md for a **$release_type** release. 
+
+Release type: $release_type
+Current working directory: $(pwd)
+
+Follow all the steps exactly as documented in workflows/RELEASE.md."
 }
 
 main "$@"
