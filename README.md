@@ -70,6 +70,19 @@ claude.sh --help                    # Show all options
 - **AWS Bedrock**: Uses `~/.aws` credentials - `--auth-with bedrock`
 - **Google Vertex**: Uses `~/.config/gcloud` credentials - `--auth-with vertex`
 
+### Custom Configuration Directory
+
+Use a custom Claude config home instead of the default `~/.claude` and `~/.claude.json`:
+
+```bash
+# Use custom config directory home, should contains both ~/.claude.json and ~/.claude
+claude-yolo --config ~/work-claude
+```
+
+This is useful for:
+- Separate auth sessions for different projects
+- Isolating Claude configurations
+
 ## GitHub CLI Authentication
 
 For GitHub operations (creating PRs, managing repos), set the `GH_TOKEN` environment variable:
@@ -115,7 +128,7 @@ claude-yolo -v ~/.terraform.d:/root/.terraform.d
 - **Proxy Support**: Automatic `localhost` → `host.docker.internal` translation
 - **Model Selection**: Use any Claude model via `ANTHROPIC_MODEL` env var
 - **Request Tracing**: Debug with `--trace` flag using claude-trace
-- **Docker Socket**: Optional mounting with `CLAUDE_YOLO_DOCKER_SOCKET=true`
+- **Docker Socket**: Optional mounting with `CCYOLO_DOCKER_SOCKET=true`
 
 
 ### Request Tracing by @badlogic `claude-trace`
@@ -134,7 +147,7 @@ docker pull ghcr.io/lroolle/claude-code-yolo:latest
 docker pull lroolle/claude-code-yolo:latest
 
 # Use specific registry
-DOCKER_IMAGE=lroolle/claude-code-yolo claude-yolo
+CCYOLO_DOCKER_IMAGE=lroolle/claude-code-yolo claude-yolo
 ```
 
 ## Manual Setup

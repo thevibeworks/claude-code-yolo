@@ -14,8 +14,10 @@ show_environment_info() {
         echo "Running as: $(whoami) (UID=$(id -u), GID=$(id -g))"
         echo "Python: $(python3 --version)"
         echo "Node.js: $(node --version 2>/dev/null || echo 'Not found')"
-        echo "Rust: $(rustc --version | head -n1)"
         echo "Go: $(go version)"
+        echo ""
+        # Force flush and small delay to prevent terminal buffering issues
+        sleep 0.1
 
         CLAUDE_PATH=""
         for path in "/usr/local/bin/claude" "/usr/bin/claude" "$(which claude 2>/dev/null)"; do
@@ -35,10 +37,13 @@ show_environment_info() {
         fi
 
         if [ -d "/root/.claude" ]; then
-            echo "Claude auth directory found"
+            echo "Claude auth directory found (legacy /root mount)"
             ls -la /root/.claude/ | head -5
+        elif [ -d "$CLAUDE_HOME/.claude" ]; then
+            echo "Claude auth directory found"
+            ls -la "$CLAUDE_HOME/.claude/" | head -5
         else
-            echo "warning: Claude auth directory not found at /root/.claude"
+            echo "warning: Claude auth directory not found"
         fi
 
         if [ -n "$ANTHROPIC_MODEL" ]; then
@@ -84,7 +89,8 @@ setup_nonroot_user() {
     if [ "$CLAUDE_UID" != "$current_uid" ]; then
         [ "$VERBOSE" = "true" ] && echo "[entrypoint] updating $CLAUDE_USER UID: $current_uid -> $CLAUDE_UID"
         usermod -u "$CLAUDE_UID" -g "$CLAUDE_GID" "$CLAUDE_USER"
-        chown -R "$CLAUDE_UID:$CLAUDE_GID" "$CLAUDE_HOME"
+        # Re-own entire home; ignore read-only bind mounts to avoid noisy errors.
+        chown -R "$CLAUDE_UID:$CLAUDE_GID" "$CLAUDE_HOME" 2>/dev/null || true
     fi
 
     [ "$VERBOSE" = "true" ] && echo "[entrypoint] setting up access to mounted volumes"
@@ -92,35 +98,11 @@ setup_nonroot_user() {
     # Make /root fully accessible - Claude needs permissions to work
     chmod 755 /root 2>/dev/null || true
 
-    # TODO: claude does support CLAUDE_CONFIG_DIR
-    # Essential: Handle .claude directory
-    if [ -d "/root/.claude" ]; then
-        [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .claude"
-        chmod -R 755 /root/.claude 2>/dev/null || true
-        ln -sfn /root/.claude "$CLAUDE_HOME/.claude"
-    fi
-
-    # Essential: Handle .claude.json
-    if [ -f "/root/.claude.json" ]; then
-        [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .claude.json"
-        chmod 644 /root/.claude.json 2>/dev/null || true
-        ln -sfn /root/.claude.json "$CLAUDE_HOME/.claude.json"
-    fi
-
-    # Essential: Handle .config/gcloud directory for Google Vertex AI
-    if [ -d "/root/.config/gcloud" ]; then
-        [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .config/gcloud"
-        mkdir -p "$CLAUDE_HOME/.config"
-        chmod -R 755 /root/.config/gcloud 2>/dev/null || true
-        ln -sfn /root/.config/gcloud "$CLAUDE_HOME/.config/gcloud"
-    fi
-
-    # Common: AWS credentials
-    if [ -d "/root/.aws" ]; then
-        [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking .aws"
-        chmod -R 755 /root/.aws 2>/dev/null || true
-        ln -sfn /root/.aws "$CLAUDE_HOME/.aws"
-    fi
+    # New mounts go directly to /home/claude, so they're already in the right place
+    [ "$VERBOSE" = "true" ] && [ -d "$CLAUDE_HOME/.claude" ] && echo "[entrypoint] .claude found in $CLAUDE_HOME"
+    [ "$VERBOSE" = "true" ] && [ -f "$CLAUDE_HOME/.claude.json" ] && echo "[entrypoint] .claude.json found in $CLAUDE_HOME"
+    [ "$VERBOSE" = "true" ] && [ -d "$CLAUDE_HOME/.aws" ] && echo "[entrypoint] .aws found in $CLAUDE_HOME"
+    [ "$VERBOSE" = "true" ] && [ -d "$CLAUDE_HOME/.config/gcloud" ] && echo "[entrypoint] .config/gcloud found in $CLAUDE_HOME"
 
     # Handle user-mounted volumes in /root/*
     # Users are responsible for setting appropriate permissions on mounted volumes
@@ -129,12 +111,17 @@ setup_nonroot_user() {
         if [ -e "$item" ] && [ "$item" != "/root/." ] && [ "$item" != "/root/.." ]; then
             basename_item=$(basename "$item")
             case "$basename_item" in
-            .claude | .aws)
+            .claude | .aws | .config | .ssh)
                 continue
                 ;;
             *)
-                [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking $basename_item (preserving permissions)"
-                ln -sfn "$item" "$CLAUDE_HOME/$basename_item"
+                target="$CLAUDE_HOME/$basename_item"
+                if [ -e "$target" ]; then
+                    [ "$VERBOSE" = "true" ] && echo "[entrypoint] skip $basename_item – already exists in $CLAUDE_HOME"
+                else
+                    [ "$VERBOSE" = "true" ] && echo "[entrypoint] linking $basename_item (preserving permissions)"
+                    ln -sfn "$item" "$target" 2>/dev/null || true
+                fi
                 ;;
             esac
         fi
@@ -147,46 +134,11 @@ build_gosu_env_cmd() {
     local user="$1"
     shift
 
-    local -a cmd=(gosu "$user" env)
-
-    cmd+=("HOME=$CLAUDE_HOME" "PATH=$PATH")
-
-    # Pass through proxy settings
-    [ -n "$HTTP_PROXY" ] && cmd+=("HTTP_PROXY=$HTTP_PROXY")
-    [ -n "$HTTPS_PROXY" ] && cmd+=("HTTPS_PROXY=$HTTPS_PROXY")
-    [ -n "$NO_PROXY" ] && cmd+=("NO_PROXY=$NO_PROXY")
-
-    # Pass through Anthropic settings
-    [ -n "$ANTHROPIC_MODEL" ] && cmd+=("ANTHROPIC_MODEL=$ANTHROPIC_MODEL")
-    [ -n "$ANTHROPIC_API_KEY" ] && cmd+=("ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
-
-    # Pass through AWS credentials for Bedrock
-    [ -n "$AWS_ACCESS_KEY_ID" ] && cmd+=("AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID")
-    [ -n "$AWS_SECRET_ACCESS_KEY" ] && cmd+=("AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY")
-    [ -n "$AWS_SESSION_TOKEN" ] && cmd+=("AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN")
-    [ -n "$AWS_REGION" ] && cmd+=("AWS_REGION=$AWS_REGION")
-    [ -n "$AWS_DEFAULT_REGION" ] && cmd+=("AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION")
-    [ -n "$AWS_PROFILE" ] && cmd+=("AWS_PROFILE=$AWS_PROFILE")
-
-    # Pass through Google Cloud settings for Vertex AI
-    [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ] && cmd+=("GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS")
-    [ -n "$GOOGLE_CLOUD_PROJECT" ] && cmd+=("GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT")
-
-    # Pass through Claude Code specific settings
-    [ -n "$CLAUDE_CODE_USE_BEDROCK" ] && cmd+=("CLAUDE_CODE_USE_BEDROCK=$CLAUDE_CODE_USE_BEDROCK")
-    [ -n "$CLAUDE_CODE_USE_VERTEX" ] && cmd+=("CLAUDE_CODE_USE_VERTEX=$CLAUDE_CODE_USE_VERTEX")
-    [ -n "$CLAUDE_CODE_MAX_OUTPUT_TOKENS" ] && cmd+=("CLAUDE_CODE_MAX_OUTPUT_TOKENS=$CLAUDE_CODE_MAX_OUTPUT_TOKENS")
-    [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && cmd+=("ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL")
-    [ -n "$DISABLE_TELEMETRY" ] && cmd+=("DISABLE_TELEMETRY=$DISABLE_TELEMETRY")
-
-    # Add the actual command and its arguments
-    cmd+=("$@")
-
-    exec "${cmd[@]}"
+    exec gosu "$user" env "HOME=$CLAUDE_HOME" "PATH=$PATH" "$@"
 }
 
 main() {
-    export PATH="/root/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH"
+    export PATH="/home/claude/.local/bin:/home/claude/.npm-global/bin:/root/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH"
 
     show_environment_info
 
@@ -214,7 +166,6 @@ main() {
     setup_nonroot_user
 
     if [ $# -eq 0 ]; then
-        # Starting message removed for cleaner startup
         build_gosu_env_cmd "$CLAUDE_USER" "$CLAUDE_CMD" --dangerously-skip-permissions
     else
         cmd="$1"
@@ -222,7 +173,6 @@ main() {
 
         # Check if this is a Claude command (claude, claude-trace, etc.)
         if [ "$cmd" = "claude" ] || [ "$cmd" = "$CLAUDE_CMD" ]; then
-            # Execution message removed for cleaner startup
             build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@" --dangerously-skip-permissions
         elif [ "$cmd" = "claude-trace" ]; then
             # Execution message removed for cleaner startup
@@ -240,8 +190,9 @@ main() {
                 i=$((i + 1))
             done
             build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "${new_args[@]}"
+        elif [ "$cmd" = "/usr/bin/zsh" ] || [ "$cmd" = "/bin/zsh" ] || [ "$cmd" = "zsh" ]; then
+            build_gosu_env_cmd "$CLAUDE_USER" "$cmd"
         else
-            # Execution message removed for cleaner startup
             build_gosu_env_cmd "$CLAUDE_USER" "$cmd" "$@"
         fi
     fi

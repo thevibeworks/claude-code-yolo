@@ -5,14 +5,14 @@ set -e
 # Runs Claude Code CLI locally or in a Docker container for safe execution
 
 VERSION="0.3.0"
-DOCKER_IMAGE="${DOCKER_IMAGE:-ghcr.io/lroolle/claude-code-yolo}"
-DOCKER_TAG="${DOCKER_TAG:-latest}"
+DOCKER_IMAGE="${CCYOLO_DOCKER_IMAGE:-ghcr.io/lroolle/claude-code-yolo}"
+DOCKER_TAG="${CCYOLO_DOCKER_TAG:-latest}"
 
 DEFAULT_ANTHROPIC_MODEL="sonnet-4"
 DEFAULT_ANTHROPIC_SMALL_FAST_MODEL="haiku-3-5"
 DEFAULT_AWS_REGION="us-west-2"
 
-USE_DOCKER="${CLAUDE_YOLO_DOCKER:-false}"
+USE_DOCKER="${CCYOLO_USE_DOCKER:-false}"
 
 show_help() {
     echo "Claude Code YOLO Wrapper - Run Claude CLI with flexible authentication and safe YOLO."
@@ -37,13 +37,23 @@ show_help() {
     echo "                              vertex    - Google Vertex AI"
     echo ""
     echo "  Auth flags (shortcuts):"
-    echo "  --claude, -c                Use Claude app authentication"
+    echo "  --claude                    Use Claude app authentication"
     echo "  --api-key, -a               Use Anthropic API key"
     echo "  --bedrock, -b               Use AWS Bedrock"
     echo "  --vertex                    Use Google Vertex AI"
     echo ""
+    echo "Configuration Options:"
+    echo "  --config DIR, -c DIR        Use custom Claude config home instead of ~/.claude"
+    echo "                              Creates directory and .claude.json if they don't exist"
+    echo "                              Should contain .claude/ directory and .claude.json file"
+    echo ""
     echo "Volume Mounting (Docker mode only):"
     echo "  -v SOURCE:TARGET[:OPTIONS]  Mount volume (Docker syntax)"
+    echo "                              Can be used multiple times"
+    echo ""
+    echo "Environment Variables (Docker mode only):"
+    echo "  -e VAR=value                Set environment variable explicitly"
+    echo "  -e VAR                      Pass environment variable from shell"
     echo "                              Can be used multiple times"
     echo ""
     echo "Environment Variables:"
@@ -54,15 +64,15 @@ show_help() {
     echo "  ANTHROPIC_API_KEY           Anthropic API key (required for api-key)"
     echo "  HTTP_PROXY                  HTTP proxy"
     echo "  HTTPS_PROXY                 HTTPS proxy"
-    echo "  CLAUDE_YOLO_DOCKER          Set to 'true' to always use Docker mode"
-    echo "  CLAUDE_YOLO_TAG             Docker image tag (default: latest)"
+    echo "  CCYOLO_DOCKER               Set to 'true' to always use Docker mode"
+    echo "  CCYOLO_DOCKER_TAG           Docker image tag (default: latest)"
     echo "  CLAUDE_UID                  Override container user UID (default: host user UID)"
     echo "  CLAUDE_GID                  Override container user GID (default: host user GID)"
     echo "  CLAUDE_CODE_MAX_OUTPUT_TOKENS  Maximum output tokens limit"
     echo "  CLAUDE_CODE_USE_VERTEX      Use Google Vertex AI"
     echo "  DISABLE_TELEMETRY           Disable Claude Code telemetry"
-    echo "  CLAUDE_YOLO_DOCKER_SOCKET   Mount Docker socket (default: false, set to 'true' to enable)"
-    echo "  CLAUDE_EXTRA_VOLUMES        Extra volumes to mount in the container"
+    echo "  CCYOLO_DOCKER_SOCKET        Mount Docker socket (default: false, set to 'true' to enable)"
+    echo "  CCYOLO_EXTRA_VOLUMES        Extra volumes to mount in the container"
     echo "  GH_TOKEN                    GitHub CLI authentication token"
     echo "  GITHUB_TOKEN                GitHub CLI authentication token (alternative)"
     echo ""
@@ -75,7 +85,10 @@ show_help() {
     echo "  $0 --auth-with vertex                         # Use Google Vertex AI"
     echo "  $0 --yolo                                     # YOLO mode with default auth"
     echo "  $0 --yolo --auth-with bedrock                 # YOLO mode with Bedrock"
-    echo "  $0 --yolo -v ~/.ssh:/root/.ssh:ro             # YOLO mode with volume mount"
+    echo "  $0 --yolo -v ~/.ssh:/home/claude/.ssh:ro      # YOLO mode with volume mount"
+    echo "  $0 --yolo -e NODE_ENV=dev -e DEBUG            # YOLO mode with env vars"
+    echo "  $0 --config ~/work-claude --yolo              # YOLO mode with custom config home"
+    echo "  export DEBUG=myapp:*; $0 --yolo -e DEBUG      # Pass env var from shell"
     echo "  ANTHROPIC_MODEL=opus-4 $0                     # Use Opus 4 with default auth"
     echo "  GH_TOKEN=ghp_xxx $0 --yolo                    # YOLO mode with GitHub CLI auth"
     echo ""
@@ -120,6 +133,8 @@ CLAUDE_ARGS=()
 OPEN_SHELL=false
 AUTH_MODE="claude"
 EXTRA_VOLUMES=()
+EXTRA_ENV_VARS=()
+CONFIG_DIR=""
 
 green() { echo -e "\033[32m$1\033[0m"; }
 yellow() { echo -e "\033[33m$1\033[0m"; }
@@ -171,7 +186,7 @@ while [ $i -lt ${#args[@]} ]; do
             exit 1
         fi
         ;;
-    --claude | -c)
+    --claude)
         AUTH_MODE="claude"
         i=$((i + 1))
         ;;
@@ -187,6 +202,25 @@ while [ $i -lt ${#args[@]} ]; do
         AUTH_MODE="vertex"
         i=$((i + 1))
         ;;
+    --config | -c)
+        # Custom config directory
+        if [ $((i + 1)) -lt ${#args[@]} ]; then
+            CONFIG_DIR="${args[$((i + 1))]}"
+            CONFIG_DIR="${CONFIG_DIR/#\~/$HOME}"
+            if [ ! -d "$CONFIG_DIR" ]; then
+                echo "Creating config directory: $CONFIG_DIR"
+                mkdir -p "$CONFIG_DIR"
+            fi
+            if [ ! -f "$CONFIG_DIR/.claude.json" ]; then
+                echo "Creating $CONFIG_DIR/.claude.json"
+                echo '{}' >"$CONFIG_DIR/.claude.json"
+            fi
+            i=$((i + 2))
+        else
+            echo "error: --config requires an argument" >&2
+            exit 1
+        fi
+        ;;
     -v)
         # Volume mounting (only in Docker mode)
         if [ $((i + 1)) -lt ${#args[@]} ]; then
@@ -194,6 +228,26 @@ while [ $i -lt ${#args[@]} ]; do
             i=$((i + 2))
         else
             echo "error: -v requires an argument" >&2
+            exit 1
+        fi
+        ;;
+    -e)
+        # Environment variable mounting (only in Docker mode)
+        if [ $((i + 1)) -lt ${#args[@]} ]; then
+            env_spec="${args[$((i + 1))]}"
+            if [[ "$env_spec" == *"="* ]]; then
+                EXTRA_ENV_VARS+=("-e" "$env_spec")
+            else
+                env_value="${!env_spec}"
+                if [ -n "$env_value" ]; then
+                    EXTRA_ENV_VARS+=("-e" "$env_spec=$env_value")
+                else
+                    echo "warning: environment variable $env_spec not set, skipping" >&2
+                fi
+            fi
+            i=$((i + 2))
+        else
+            echo "error: -e requires an argument" >&2
             exit 1
         fi
         ;;
@@ -358,7 +412,6 @@ check_dangerous_directory() {
         "/etc"
         "/usr"
         "/var"
-        "/opt"
         "/bin"
         "/sbin"
         "/lib"
@@ -439,30 +492,16 @@ DOCKER_ARGS+=(
 
 )
 
-# Essential mounts for Claude
-if [ -d "$HOME/.claude" ]; then
-    DOCKER_ARGS+=("-v" "$HOME/.claude:/root/.claude")
-fi
-
-if [ -f "$HOME/.claude.json" ]; then
-    DOCKER_ARGS+=("-v" "$HOME/.claude.json:/root/.claude.json")
-fi
+# Users can mount additional configs with -v flag
+# Examples: -v ~/.ssh:/home/claude/.ssh:ro -v ~/.gitconfig:/home/claude/.gitconfig:ro
 
 # Mount project-specific Claude settings if they exist
 if [ -d "${CURRENT_DIR}/.claude" ]; then
     DOCKER_ARGS+=("-v" "${CURRENT_DIR}/.claude:${CURRENT_DIR}/.claude")
 fi
 
-# Mount for AWS bedrock api
-if [ -d "$HOME/.aws" ]; then
-    DOCKER_ARGS+=("-v" "$HOME/.aws:/root/.aws:ro")
-fi
-
-# Users can mount additional configs with -v flag
-# Examples: -v ~/.ssh:/root/.ssh:ro -v ~/.gitconfig:/root/.gitconfig:ro
-
 # Only mount Docker socket if explicitly enabled
-if [ "${CLAUDE_YOLO_DOCKER_SOCKET:-false}" = "true" ] && [ -S /var/run/docker.sock ]; then
+if [ "${CCYOLO_DOCKER_SOCKET:-false}" = "true" ] && [ -S /var/run/docker.sock ]; then
     DOCKER_ARGS+=("-v" "/var/run/docker.sock:/var/run/docker.sock")
 fi
 
@@ -472,29 +511,41 @@ if [ ${#EXTRA_VOLUMES[@]} -gt 0 ]; then
             DOCKER_ARGS+=("-v" "$volume")
         fi
     done
-    CLAUDE_EXTRA_VOLUMES="${EXTRA_VOLUMES[*]}"
-    DOCKER_ARGS+=("-e" "CLAUDE_EXTRA_VOLUMES=$CLAUDE_EXTRA_VOLUMES")
+    CCYOLO_EXTRA_VOLUMES="${EXTRA_VOLUMES[*]}"
+    DOCKER_ARGS+=("-e" "CCYOLO_EXTRA_VOLUMES=$CCYOLO_EXTRA_VOLUMES")
+fi
+
+# Pass extra environment variables specified with -e
+if [ ${#EXTRA_ENV_VARS[@]} -gt 0 ]; then
+    for env_var in "${EXTRA_ENV_VARS[@]}"; do
+        if [ "$env_var" != "-e" ]; then
+            DOCKER_ARGS+=("-e" "$env_var")
+        fi
+    done
 fi
 
 # Pass proxy environment variables, translating localhost/127.0.0.1 to host.docker.internal
 if [ -n "$HTTP_PROXY" ]; then
     HTTP_PROXY_DOCKER=$(echo "$HTTP_PROXY" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
     DOCKER_ARGS+=("-e" "HTTP_PROXY=$HTTP_PROXY_DOCKER")
+elif [ -n "$http_proxy" ]; then
+    http_proxy_DOCKER=$(echo "$http_proxy" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
+    DOCKER_ARGS+=("-e" "HTTP_PROXY=$http_proxy_DOCKER")
 fi
+
 if [ -n "$HTTPS_PROXY" ]; then
     HTTPS_PROXY_DOCKER=$(echo "$HTTPS_PROXY" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
     DOCKER_ARGS+=("-e" "HTTPS_PROXY=$HTTPS_PROXY_DOCKER")
-fi
-[ -n "$http_proxy" ] && [ -z "$HTTP_PROXY" ] && {
-    http_proxy_DOCKER=$(echo "$http_proxy" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
-    DOCKER_ARGS+=("-e" "HTTP_PROXY=$http_proxy_DOCKER")
-}
-[ -n "$https_proxy" ] && [ -z "$HTTPS_PROXY" ] && {
+elif [ -n "$https_proxy" ]; then
     https_proxy_DOCKER=$(echo "$https_proxy" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
     DOCKER_ARGS+=("-e" "HTTPS_PROXY=$https_proxy_DOCKER")
-}
-[ -n "$NO_PROXY" ] && DOCKER_ARGS+=("-e" "NO_PROXY=$NO_PROXY")
-[ -n "$no_proxy" ] && [ -z "$NO_PROXY" ] && DOCKER_ARGS+=("-e" "NO_PROXY=$no_proxy")
+fi
+
+if [ -n "$NO_PROXY" ]; then
+    DOCKER_ARGS+=("-e" "NO_PROXY=$NO_PROXY")
+elif [ -n "$no_proxy" ]; then
+    DOCKER_ARGS+=("-e" "NO_PROXY=$no_proxy")
+fi
 
 DOCKER_ARGS+=("--add-host" "host.docker.internal:host-gateway")
 
@@ -549,6 +600,10 @@ case "$AUTH_MODE" in
     fi
     AWS_REGION="${AWS_REGION:-$DEFAULT_AWS_REGION}"
 
+    # Unset conflicting auth variables
+    unset ANTHROPIC_API_KEY
+    unset CLAUDE_CODE_USE_VERTEX
+
     ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
     ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
 
@@ -568,12 +623,19 @@ case "$AUTH_MODE" in
     [ -n "$AWS_SESSION_TOKEN" ] && DOCKER_ARGS+=("-e" "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN")
     [ -n "$AWS_PROFILE" ] && DOCKER_ARGS+=("-e" "AWS_PROFILE=$AWS_PROFILE")
 
+    if [ -d "$HOME/.aws" ]; then
+        DOCKER_ARGS+=("-v" "$HOME/.aws:/home/claude/.aws:ro")
+    fi
+
     ;;
 "api-key")
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         echo "error: ANTHROPIC_API_KEY not set. Required for --api-key mode."
         exit 1
     fi
+
+    unset CLAUDE_CODE_USE_BEDROCK
+    unset CLAUDE_CODE_USE_VERTEX
 
     ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
     ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
@@ -607,9 +669,10 @@ case "$AUTH_MODE" in
     DOCKER_ARGS+=("-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
     DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$MAIN_MODEL_NAME")
     DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$FAST_MODEL_NAME")
-
     ;;
 "vertex")
+    unset ANTHROPIC_API_KEY
+    unset CLAUDE_CODE_USE_BEDROCK
 
     ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
     ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
@@ -629,19 +692,56 @@ case "$AUTH_MODE" in
         DOCKER_ARGS+=("-v" "$GOOGLE_APPLICATION_CREDENTIALS:$GOOGLE_APPLICATION_CREDENTIALS")
     fi
     if [ -d "$HOME/.config/gcloud" ]; then
-        DOCKER_ARGS+=("-v" "$HOME/.config/gcloud:/root/.config/gcloud")
+        DOCKER_ARGS+=("-v" "$HOME/.config/gcloud:/home/claude/.config/gcloud")
     fi
 
     ;;
 *)
-    if [ ! -d "$HOME/.claude" ]; then
-        echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
-    fi
+    unset ANTHROPIC_API_KEY
+    unset CLAUDE_CODE_USE_BEDROCK
+    unset CLAUDE_CODE_USE_VERTEX
+
     [ -n "$ANTHROPIC_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$ANTHROPIC_MODEL")
     [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL")
-
     ;;
 esac
+
+if [ -n "$CONFIG_DIR" ]; then
+    # Custom config directory - mount everything user put there
+    CLAUDE_CONFIG_BASE="$CONFIG_DIR"
+
+    if [ "$AUTH_MODE" = "claude" ] && [ ! -d "$CONFIG_DIR/.claude" ]; then
+        echo "[!] $(yellow "Custom config directory $CONFIG_DIR missing .claude - run 'claude login' first")"
+    fi
+
+    for item in "$CONFIG_DIR"/.* "$CONFIG_DIR"/*; do
+        if [ -e "$item" ]; then
+            basename_item="$(basename "$item")"
+            # Skip . and ..
+            if [ "$basename_item" != "." ] && [ "$basename_item" != ".." ]; then
+                if [ -d "$item" ]; then
+                    DOCKER_ARGS+=("-v" "$item:/home/claude/$basename_item")
+                elif [ -f "$item" ]; then
+                    DOCKER_ARGS+=("-v" "$item:/home/claude/$basename_item")
+                fi
+            fi
+        fi
+    done
+    DOCKER_ARGS+=("-e" "CLAUDE_CONFIG_BASE=$CONFIG_DIR")
+else
+    # Default config location - only mount Claude-specific files for ALL auth modes
+    CLAUDE_CONFIG_BASE="$HOME"
+    if [ -d "$HOME/.claude" ]; then
+        DOCKER_ARGS+=("-v" "$HOME/.claude:/home/claude/.claude")
+    fi
+    if [ -f "$HOME/.claude.json" ]; then
+        DOCKER_ARGS+=("-v" "$HOME/.claude.json:/home/claude/.claude.json")
+    fi
+
+    if [ "$AUTH_MODE" = "claude" ] && [ ! -d "$HOME/.claude" ]; then
+        echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
+    fi
+fi
 
 AUTH_STATUS=""
 case "$AUTH_MODE" in
@@ -659,11 +759,35 @@ echo "$HEADER_LINE"
 echo "Work: $(blue "$CURRENT_DIR")"
 
 echo "Vols: $(blue "${CURRENT_DIR}:${CURRENT_DIR}") $(green '[workspace]')"
-[ -d "$HOME/.claude" ] && echo "      $(blue "$HOME/.claude:/root/.claude") $(green '[auth]')"
-[ -f "$HOME/.claude.json" ] && echo "      $(blue "$HOME/.claude.json:/root/.claude.json") $(green '[auth]')"
+
+# Show config directory mounts (applies to ALL auth modes)
+if [ -n "$CONFIG_DIR" ]; then
+    echo "Conf: $(blue "$CONFIG_DIR") $(green '[custom-config-home]')"
+    for item in "$CONFIG_DIR"/.* "$CONFIG_DIR"/*; do
+        if [ -e "$item" ]; then
+            basename_item="$(basename "$item")"
+            if [ "$basename_item" != "." ] && [ "$basename_item" != ".." ]; then
+                echo "      $(blue "$item:/home/claude/$basename_item") $(green '[config]')"
+            fi
+        fi
+    done
+else
+    [ -d "$HOME/.claude" ] && echo "      $(blue "$HOME/.claude:/home/claude/.claude") $(green '[auth]')"
+    [ -f "$HOME/.claude.json" ] && echo "      $(blue "$HOME/.claude.json:/home/claude/.claude.json") $(green '[auth]')"
+fi
+
+case "$AUTH_MODE" in
+"bedrock")
+    [ -d "$HOME/.aws" ] && echo "      $(blue "$HOME/.aws:/home/claude/.aws:ro") $(green '[aws]')"
+    ;;
+"vertex")
+    [ -d "$HOME/.config/gcloud" ] && echo "      $(blue "$HOME/.config/gcloud:/home/claude/.config/gcloud") $(green '[gcloud]')"
+    [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ] && [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ] && echo "      $(blue "$GOOGLE_APPLICATION_CREDENTIALS:$GOOGLE_APPLICATION_CREDENTIALS") $(green '[gcloud-creds]')"
+    ;;
+esac
+
 [ -d "${CURRENT_DIR}/.claude" ] && echo "      $(blue "${CURRENT_DIR}/.claude:${CURRENT_DIR}/.claude") $(green '[project]')"
-[ -d "$HOME/.aws" ] && echo "      $(blue "$HOME/.aws:/root/.aws:ro") $(green '[aws]')"
-[ "${CLAUDE_YOLO_DOCKER_SOCKET:-false}" = "true" ] && [ -S /var/run/docker.sock ] && echo "      $(blue "/var/run/docker.sock:/var/run/docker.sock") $(yellow '[docker]')"
+[ "${CCYOLO_DOCKER_SOCKET:-false}" = "true" ] && [ -S /var/run/docker.sock ] && echo "      $(blue "/var/run/docker.sock:/var/run/docker.sock") $(yellow '[docker]')"
 
 if [ ${#EXTRA_VOLUMES[@]} -gt 0 ]; then
     for volume in "${EXTRA_VOLUMES[@]}"; do
@@ -690,6 +814,24 @@ case "$AUTH_MODE" in
     ;;
 esac
 [ -n "$HTTP_PROXY" ] && ENV_VARS+="   $(yellow 'PROXY'): $HTTP_PROXY\n"
+
+# Show user-specified environment variables
+if [ ${#EXTRA_ENV_VARS[@]} -gt 0 ]; then
+    for env_var in "${EXTRA_ENV_VARS[@]}"; do
+        if [ "$env_var" != "-e" ]; then
+            if [[ "$env_var" == *"="* ]]; then
+                var_name="${env_var%%=*}"
+                var_value="${env_var#*=}"
+            else
+                var_name="$env_var"
+                var_value="${!env_var}"
+            fi
+            if [ -n "$var_value" ]; then
+                ENV_VARS+="   $(blue "$var_name"): $var_value\n"
+            fi
+        fi
+    done
+fi
 
 if [ -n "$ENV_VARS" ]; then
     echo "Envs:"
