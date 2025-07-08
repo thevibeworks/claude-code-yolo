@@ -41,6 +41,9 @@ main() {
     # Let Claude Code handle the intelligent workflow
     local claude_cmd="${CLAUDE_YOLO_RELEASE_CMD:-$CLAUDE_YOLO}"
     
+    # Expand ~ in the command (Docker needs absolute paths)
+    claude_cmd="${claude_cmd//\~/$HOME}"
+    
     $claude_cmd "Execute the release workflow from workflows/RELEASE.md for a **$release_type** release.
 
 Release type: $release_type
