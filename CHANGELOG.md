@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2025-07-08
+
+### Changed
+- Expand ~ to $HOME in release command for Docker compatibility
+- Make Claude cmd configurable in release workflow
+- Update Claude version to 1.0.44 and improve release flow
+
 ## [0.4.0] - 2025-07-08
 
 ### Changed
