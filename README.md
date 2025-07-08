@@ -164,6 +164,14 @@ make build
 ./claude.sh --yolo
 ```
 
+### Custom Claude Version
+
+```bash
+make CLAUDE_CODE_VERSION=1.0.45 build  # Specific version
+make CLAUDE_CODE_VERSION=latest build   # Latest version
+```
+Default: 1.0.44
+
 ## Inspired by
 
 - **[anthropics/claude-code](https://github.com/anthropics/claude-code)** - Official Claude Code CLI
