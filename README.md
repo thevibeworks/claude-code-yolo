@@ -6,7 +6,7 @@ Docker-based Claude Code CLI with full development capabilities and host isolati
 
 ```bash
 # One-line install
-curl -fsSL https://raw.githubusercontent.com/lroolle/claude-code-yolo/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/thevibeworks/claude-code-yolo/main/install.sh | bash
 
 ```
 
@@ -141,20 +141,20 @@ Claude Code YOLO is available from multiple container registries:
 
 ```bash
 # GitHub Container Registry (recommended, primary)
-docker pull ghcr.io/lroolle/claude-code-yolo:latest
+docker pull ghcr.io/thevibeworks/ccyolo:latest
 
 # Docker Hub (fallback)
-docker pull lroolle/claude-code-yolo:latest
+docker pull thevibeworks/ccyolo:latest
 
 # Use specific registry
-CCYOLO_DOCKER_IMAGE=lroolle/claude-code-yolo claude-yolo
+CCYOLO_DOCKER_IMAGE=thevibeworks/ccyolo claude-yolo
 ```
 
 ## Manual Setup
 
 ```bash
 # Clone repository
-git clone https://github.com/lroolle/claude-code-yolo.git
+git clone https://github.com/thevibeworks/claude-code-yolo.git
 cd claude-code-yolo
 
 # Build from source (optional)

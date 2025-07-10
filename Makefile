@@ -1,7 +1,7 @@
 
-IMAGE_NAME := ghcr.io/lroolle/claude-code-yolo
+IMAGE_NAME := ghcr.io/thevibeworks/ccyolo
 TAG := latest
-CONTAINER_NAME := claude-code-yolo-$(shell basename $(PWD))-$(shell date +%s)
+CONTAINER_NAME := ccyolo-$(shell basename $(PWD))-$(shell date +%s)
 CLAUDE_CODE_VERSION := 1.0.44
 
 export DOCKER_BUILDKIT := 1
@@ -10,13 +10,13 @@ export DOCKER_BUILDKIT := 1
 
 .PHONY: build
 build:
-	@echo "🔨 Building Claude Code YOLO Docker image..."
+	@echo "🔨 Building CCYOLO Docker image..."
 	docker build --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Build completed: $(IMAGE_NAME):$(TAG)"
 
 .PHONY: rebuild
 rebuild:
-	@echo "🔨 Rebuilding Claude Code YOLO Docker image (no cache)..."
+	@echo "🔨 Rebuilding CCYOLO Docker image (no cache)..."
 	docker build --no-cache --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Rebuild completed: $(IMAGE_NAME):$(TAG)"
 
@@ -156,8 +156,8 @@ release-major:
 
 .PHONY: help
 help:
-	@echo "Claude Code YOLO - Docker Build Shortcuts"
-	@echo "=========================================="
+	@echo "CCYOLO - Docker Build Shortcuts"
+	@echo "==============================="
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""

@@ -5,7 +5,7 @@ set -e
 # Runs Claude Code CLI locally or in a Docker container for safe execution
 
 VERSION="0.4.1"
-DOCKER_IMAGE="${CCYOLO_DOCKER_IMAGE:-ghcr.io/lroolle/claude-code-yolo}"
+DOCKER_IMAGE="${CCYOLO_DOCKER_IMAGE:-ghcr.io/thevibeworks/ccyolo}"
 DOCKER_TAG="${CCYOLO_DOCKER_TAG:-latest}"
 
 DEFAULT_ANTHROPIC_MODEL="sonnet-4"
@@ -474,7 +474,7 @@ check_image
 CURRENT_DIR="$(pwd)"
 CURRENT_DIR_BASENAME="$(basename "$CURRENT_DIR")"
 
-CONTAINER_NAME="claude-code-yolo-${CURRENT_DIR_BASENAME}-$$"
+CONTAINER_NAME="ccyolo-${CURRENT_DIR_BASENAME}-$$"
 
 DOCKER_ARGS=(
     "run"
@@ -751,7 +751,7 @@ case "$AUTH_MODE" in
 *) AUTH_STATUS="$(green 'OAuth')" ;;
 esac
 
-HEADER_LINE="$(green ">>> CLAUDE-YOLO v$VERSION") | $AUTH_STATUS"
+HEADER_LINE="$(green ">>> Claude Code YOLO v$VERSION") | $AUTH_STATUS"
 [ "$USE_TRACE" = true ] && HEADER_LINE+=" | Trace:$(yellow 'ON')"
 
 echo ""

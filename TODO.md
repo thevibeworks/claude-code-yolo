@@ -20,7 +20,7 @@
 - [X] Resolve auth mounting inconsistency (`/root/` vs `/home/claude/`)
 - [x] Fix credential sync - Use permission + symlink approach instead of copying
 - [x] Fix --dangerously-skip-permissions consistency in non-root mode
-- [x] Add Docker socket security control via CLAUDE_YOLO_DOCKER_SOCKET env var
-- [x] Gate Docker socket mount behind `CLAUDE_YOLO_DOCKER_SOCKET=true` env var (default: off)
+- [x] Add Docker socket security control via CCYOLO_DOCKER_SOCKET env var
+- [x] Gate Docker socket mount behind `CCYOLO_DOCKER_SOCKET=true` env var (default: off)
 - [x] Make risky mounts opt-in, not default
 - [x] `check_dangerous_directory`

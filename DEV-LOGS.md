@@ -1,8 +1,32 @@
-# Development Logs
-- Prepend new entries with `## Dev Log: YYYY-MM-DD`.
-- Reference issue numbers in the format `#<issue-number>` for easy linking.
+# Development Logs & WIPs
+- Prepend new entries with:
+  ```markdown
+  # [YYYY-MM-DD] Dev Log: <Subject>
+  - Why: <one-line reason>
+  - What: <brief list of changes>
+  - Result: <outcome/impact>
+  ```
+- Prepend new WIP within the `# WIP` section.
+  - use `- [ ]` for tasks, `- [x]` for completed items.
 - We write or explain to the damn point. Be clear, be super concise - no fluff, no hand-holding, no repeating.
-- Minimal markdown markers, no unnecessary formatting, minimal unicode emojis.
+- Be specific about what was done, why it was done, and any important context.
+- Minimal markdown markers, no unnecessary formatting, minimal emojis.
+- Reference issue numbers in the format `#<issue-number>` for easy linking.
+
+# [2025-07-10] Dev Log: Complete namespace migration to thevibeworks
+- Why: Migrate from lroolle org to thevibeworks, shorten Docker image name for cleaner registry
+- What: Updated all references, Docker images, URLs across entire codebase, kept command name for backward compatibility
+- Result: Clean migration with repo at thevibeworks/claude-code-yolo, Docker image at thevibeworks/ccyolo, command stays claude-yolo
+
+**Changes Made**:
+- Repo: `lroolle/claude-code-yolo` → `thevibeworks/claude-code-yolo`
+- Docker: `ghcr.io/lroolle/claude-code-yolo` → `ghcr.io/thevibeworks/ccyolo`
+- Command: Kept `claude-yolo` (backward compatibility)
+- Project: Kept "Claude Code YOLO" title
+
+**Files Updated**: Makefile, README.md, CLAUDE.md, claude.sh, claude-yolo, install.sh, Dockerfile, CHANGELOG.md, DEV-LOGS.md, scripts/, claude-yolo-pro/
+
+Addresses issue #48.
 
 ## Dev Log: 2025-07-09
 
@@ -10,7 +34,7 @@
 
 **Problem**: Messy auth flags, poor environment handling, inconsistent Docker mounts.
 
-**Solution**: 
+**Solution**:
 - Unified auth with `--auth-with` pattern (claude|api-key|bedrock|vertex)
 - Proper environment var handling with `-e` flag
 - Controlled auth directory mounting with explicit permissions
@@ -89,7 +113,7 @@ claude-yolo -v ~/.ssh:/root/.ssh:ro -v ~/Desktop/claude:/home/claude/.claude/ -v
 version: '3.8'
 services:
   claude:
-    image: ghcr.io/lroolle/claude-code-yolo:latest
+    image: ghcr.io/thevibeworks/ccyolo:latest
     volumes:
       - ~/.ssh:/root/.ssh:ro
       - ${PWD}:${PWD}
@@ -318,7 +342,7 @@ services:
 - **Startup**: Two-line summary with key info:
   ```
   Claude Code YOLO v0.2.0 | Auth: OAuth | Working: /path/to/project
-  Container: claude-code-yolo-myproject-12345
+  Container: ccyolo-myproject-12345
   ```
 - **Flags**: Added --quiet and --verbose for user control over output verbosity
 
@@ -630,7 +654,7 @@ Cons: Added complexity, manifest management
 
 #### Option 3: Layered Image Approach
 ```dockerfile
-FROM lroolle/claude-code-yolo:base
+FROM thevibeworks/ccyolo:base
 RUN install-tool gh terraform kubectl
 ```
 Pros: Docker-native, cacheable layers
