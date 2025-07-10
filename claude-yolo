@@ -7,7 +7,7 @@ CLAUDE_SH="$SCRIPT_DIR/claude.sh"
 
 if [ ! -f "$CLAUDE_SH" ]; then
     echo "Error: claude.sh not found at $CLAUDE_SH" >&2
-    echo "Make sure you're running this from the ccyolo directory" >&2
+    echo "Make sure you're running this from the claude-code-yolo directory" >&2
     exit 1
 fi
 

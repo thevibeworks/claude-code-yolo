@@ -10,13 +10,13 @@ export DOCKER_BUILDKIT := 1
 
 .PHONY: build
 build:
-	@echo "🔨 Building CCYOLO Docker image..."
+	@echo "🔨 Building Claude Code YOLO Docker image..."
 	docker build --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Build completed: $(IMAGE_NAME):$(TAG)"
 
 .PHONY: rebuild
 rebuild:
-	@echo "🔨 Rebuilding CCYOLO Docker image (no cache)..."
+	@echo "🔨 Rebuilding Claude Code YOLO Docker image (no cache)..."
 	docker build --no-cache --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Rebuild completed: $(IMAGE_NAME):$(TAG)"
 
@@ -156,7 +156,7 @@ release-major:
 
 .PHONY: help
 help:
-	@echo "CCYOLO - Docker Build Shortcuts"
+	@echo "Claude Code YOLO - Docker Build Shortcuts"
 	@echo "==============================="
 	@echo ""
 	@echo "Usage: make [target]"
