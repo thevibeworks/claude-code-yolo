@@ -5,8 +5,8 @@ set -e
 
 SCRIPT_NAME="claude.sh"
 YOLO_WRAPPER="claude-yolo"
-DOCKER_IMAGE="ghcr.io/lroolle/claude-code-yolo:latest"
-GITHUB_RAW="https://raw.githubusercontent.com/lroolle/claude-code-yolo/main"
+DOCKER_IMAGE="ghcr.io/thevibeworks/ccyolo:latest"
+GITHUB_RAW="https://raw.githubusercontent.com/thevibeworks/claude-code-yolo/main"
 
 echo "Claude Code YOLO Installer"
 echo "=========================="
@@ -48,11 +48,11 @@ echo ""
 echo "Pulling Docker image..."
 if ! docker pull "$DOCKER_IMAGE"; then
     echo "Failed to pull from GitHub Container Registry, trying Docker Hub..."
-    DOCKER_IMAGE_FALLBACK="lroolle/claude-code-yolo:latest"
+    DOCKER_IMAGE_FALLBACK="thevibeworks/ccyolo:latest"
     docker pull "$DOCKER_IMAGE_FALLBACK"
     echo ""
     echo -e "\033[93mNOTE: Using Docker Hub fallback image\033[0m"
-    echo "To use Docker Hub by default, set: export DOCKER_IMAGE=lroolle/claude-code-yolo"
+    echo "To use Docker Hub by default, set: export CCYOLO_DOCKER_IMAGE=thevibeworks/ccyolo"
     echo "Add this to your shell profile (.bashrc, .zshrc) to make it permanent"
 fi
 
@@ -79,7 +79,7 @@ echo ""
 echo "3. Start with Claude YOLO:"
 echo "   claude-yolo                              # Run Claude with full permissions"
 echo ""
-echo "4. Claude-yolo handles all features:"
+echo "4. Claude YOLO handles all features:"
 echo "   claude-yolo --auth-with bedrock          # Use AWS Bedrock"
 echo "   claude-yolo --auth-with api-key          # Use API key(may have to rerun \`/login\`)"
 echo "   claude-yolo --trace                      # Enable request tracing"

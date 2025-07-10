@@ -39,7 +39,7 @@ main() {
     check_prerequisites
     
     # Let Claude Code handle the intelligent workflow
-    local claude_cmd="${CLAUDE_YOLO_RELEASE_CMD:-$CLAUDE_YOLO}"
+    local claude_cmd="${CCYOLO_RELEASE_CMD:-$CLAUDE_YOLO}"
     
     # Expand ~ in the command (Docker needs absolute paths)
     claude_cmd="${claude_cmd//\~/$HOME}"

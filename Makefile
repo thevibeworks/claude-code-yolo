@@ -1,7 +1,7 @@
 
-IMAGE_NAME := ghcr.io/lroolle/claude-code-yolo
+IMAGE_NAME := ghcr.io/thevibeworks/ccyolo
 TAG := latest
-CONTAINER_NAME := claude-code-yolo-$(shell basename $(PWD))-$(shell date +%s)
+CONTAINER_NAME := ccyolo-$(shell basename $(PWD))-$(shell date +%s)
 CLAUDE_CODE_VERSION := 1.0.44
 
 export DOCKER_BUILDKIT := 1
@@ -157,7 +157,7 @@ release-major:
 .PHONY: help
 help:
 	@echo "Claude Code YOLO - Docker Build Shortcuts"
-	@echo "=========================================="
+	@echo "==============================="
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""

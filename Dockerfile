@@ -5,8 +5,8 @@
 
 FROM ubuntu:24.04 AS base
 
-LABEL maintainer="github.com/lroolle"
-LABEL org.opencontainers.image.title="claude-code-yolo"
+LABEL maintainer="github.com/thevibeworks"
+LABEL org.opencontainers.image.title="ccyolo"
 LABEL org.opencontainers.image.description="Safe Claude Code CLI with full dev environment"
 LABEL org.opencontainers.image.licenses="MIT"
 

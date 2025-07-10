@@ -19,7 +19,7 @@ fi
 
 CURRENT_DIR="$(pwd)"
 CURRENT_DIR_BASENAME="$(basename "$CURRENT_DIR")"
-CONTAINER_PATTERN="claude-code-yolo-${CURRENT_DIR_BASENAME}-"
+CONTAINER_PATTERN="ccyolo-${CURRENT_DIR_BASENAME}-"
 
 find_project_containers() {
     docker ps --filter "name=$CONTAINER_PATTERN" --format "{{.Names}}" 2>/dev/null
@@ -129,7 +129,7 @@ parse_args() {
             echo "                Can be used multiple times"
             echo ""
             echo "Examples:"
-            echo "  claude-yolo                                         # Run Claude in YOLO mode"
+            echo "  claude-yolo                                          # Run Claude in YOLO mode"
             echo "  CCYOLO_DOCKER_IMAGE=custom-image claude-yolo        # Use custom image"
             echo "  claude-yolo --inspect                               # Quick access to running container"
             echo "  claude-yolo --ps                                    # See project containers"
