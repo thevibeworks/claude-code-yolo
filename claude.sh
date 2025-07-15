@@ -127,6 +127,39 @@ get_model_arn() {
     echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/${model_name}"
 }
 
+# Check if a model supports thinking features (Claude 4+ models only)
+is_claude4_model() {
+    local model="$1"
+    case "$model" in
+    "sonnet-4" | "opus-4" | "claude-sonnet-4-20250514" | "claude-opus-4-20250514")
+        return 0  # Claude 4 model - supports thinking
+        ;;
+    *)
+        return 1  # Non-Claude 4 model - disable thinking
+        ;;
+    esac
+}
+
+# Disable thinking features for non-Claude 4 models (local mode)
+disable_thinking_features_local() {
+    local model="$1"
+    if ! is_claude4_model "$model"; then
+        export DISABLE_INTERLEAVED_THINKING=1
+        export MAX_THINKING_TOKENS=0
+        export DISABLE_PROMPT_CACHING=1
+    fi
+}
+
+# Disable thinking features for non-Claude 4 models (Docker mode)
+disable_thinking_features_docker() {
+    local model="$1"
+    if ! is_claude4_model "$model"; then
+        DOCKER_ARGS+=("-e" "DISABLE_INTERLEAVED_THINKING=1")
+        DOCKER_ARGS+=("-e" "MAX_THINKING_TOKENS=0")
+        DOCKER_ARGS+=("-e" "DISABLE_PROMPT_CACHING=1")
+    fi
+}
+
 USE_TRACE=false
 VERBOSE=false
 CLAUDE_ARGS=()
@@ -293,6 +326,9 @@ run_claude_local() {
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
         ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
 
+        # Disable thinking and prompt caching for non-Claude 4 models
+        disable_thinking_features_local "$ANTHROPIC_MODEL"
+
         export ANTHROPIC_MODEL=$(get_model_arn "$ANTHROPIC_MODEL")
         export ANTHROPIC_SMALL_FAST_MODEL=$(get_model_arn "$ANTHROPIC_SMALL_FAST_MODEL")
         export CLAUDE_CODE_USE_BEDROCK=1
@@ -334,6 +370,9 @@ run_claude_local() {
         "haiku-3") export ANTHROPIC_SMALL_FAST_MODEL="claude-3-haiku-20240307" ;;
         esac
 
+        # Disable thinking and prompt caching for non-Claude 4 models
+        disable_thinking_features_local "$ANTHROPIC_MODEL"
+
         echo "Main model: $ANTHROPIC_MODEL"
         echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
         ;;
@@ -344,6 +383,9 @@ run_claude_local() {
 
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
         ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
+
+        # Disable thinking and prompt caching for non-Claude 4 models
+        disable_thinking_features_local "$ANTHROPIC_MODEL"
         ;;
     *)
         AUTH_STATUS="$(green 'OAuth')"
@@ -352,6 +394,11 @@ run_claude_local() {
         fi
         unset ANTHROPIC_API_KEY
         unset CLAUDE_CODE_USE_BEDROCK
+
+        # If user has set a custom model, check if we need to disable thinking features
+        if [ -n "$ANTHROPIC_MODEL" ]; then
+            disable_thinking_features_local "$ANTHROPIC_MODEL"
+        fi
         ;;
     esac
 
@@ -387,6 +434,10 @@ run_claude_local() {
     echo ""
     echo "$(blue '────────────────────────────────────')"
     echo ""
+
+    if [ -n "$CONFIG_DIR" ]; then
+        export CLAUDE_CONFIG_DIR="$CONFIG_DIR/.claude"
+    fi
 
     if [ "$USE_TRACE" = true ]; then
         if command -v "$CLAUDE_TRACE_PATH" >/dev/null 2>&1; then
@@ -610,6 +661,9 @@ case "$AUTH_MODE" in
     MAIN_MODEL_ARN=$(get_model_arn "$ANTHROPIC_MODEL")
     FAST_MODEL_ARN=$(get_model_arn "$ANTHROPIC_SMALL_FAST_MODEL")
 
+    # Disable thinking and prompt caching for non-Claude 4 models
+    disable_thinking_features_docker "$ANTHROPIC_MODEL"
+
     DOCKER_ARGS+=(
         "-e" "ANTHROPIC_MODEL=$MAIN_MODEL_ARN"
         "-e" "ANTHROPIC_SMALL_FAST_MODEL=$FAST_MODEL_ARN"
@@ -666,6 +720,9 @@ case "$AUTH_MODE" in
     *) FAST_MODEL_NAME="$ANTHROPIC_SMALL_FAST_MODEL" ;;
     esac
 
+    # Disable thinking and prompt caching for non-Claude 4 models
+    disable_thinking_features_docker "$MAIN_MODEL_NAME"
+
     DOCKER_ARGS+=("-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
     DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$MAIN_MODEL_NAME")
     DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$FAST_MODEL_NAME")
@@ -676,6 +733,9 @@ case "$AUTH_MODE" in
 
     ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
     ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
+
+    # Disable thinking and prompt caching for non-Claude 4 models
+    disable_thinking_features_docker "$ANTHROPIC_MODEL"
 
     DOCKER_ARGS+=(
         "-e" "CLAUDE_CODE_USE_VERTEX=1"
@@ -700,6 +760,11 @@ case "$AUTH_MODE" in
     unset ANTHROPIC_API_KEY
     unset CLAUDE_CODE_USE_BEDROCK
     unset CLAUDE_CODE_USE_VERTEX
+
+    # If user has set a custom model, check if we need to disable thinking features
+    if [ -n "$ANTHROPIC_MODEL" ]; then
+        disable_thinking_features_docker "$ANTHROPIC_MODEL"
+    fi
 
     [ -n "$ANTHROPIC_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$ANTHROPIC_MODEL")
     [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL")
