@@ -152,6 +152,7 @@ EXTRA_VOLUMES=()
 EXTRA_ENV_VARS=()
 CONFIG_DIR=""
 SKIP_CONFIG=false
+QUIET=false
 
 green() { echo -e "\033[32m$1\033[0m"; }
 yellow() { echo -e "\033[33m$1\033[0m"; }
@@ -258,32 +259,47 @@ load_config_file() {
                 "AUTH_MODE") AUTH_MODE="$var_value" ;;
                 "CONFIG_DIR") 
                     CONFIG_DIR="$var_value"
-                    # Create directory if it doesn't exist
-                    if [ ! -d "$CONFIG_DIR" ]; then
-                        mkdir -p "$CONFIG_DIR"
-                    fi
-                    if [ ! -f "$CONFIG_DIR/.claude.json" ]; then
-                        echo '{}' >"$CONFIG_DIR/.claude.json"
+                    # Validate path - no traversal allowed
+                    if [[ "$CONFIG_DIR" =~ \.\. ]]; then
+                        echo "warning: CONFIG_DIR contains path traversal '..': $CONFIG_DIR" >&2
+                        CONFIG_DIR=""
+                    else
+                        # Create directory if it doesn't exist
+                        if [ ! -d "$CONFIG_DIR" ]; then
+                            mkdir -p "$CONFIG_DIR"
+                        fi
+                        if [ ! -f "$CONFIG_DIR/.claude.json" ]; then
+                            echo '{}' >"$CONFIG_DIR/.claude.json"
+                        fi
                     fi
                     ;;
                 "USE_TRACE"|"TRACE") 
                     if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
                         USE_TRACE=true
+                    elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                        USE_TRACE=false
                     fi
                     ;;
                 "VERBOSE") 
                     if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
                         VERBOSE=true
+                    elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                        VERBOSE=false
                     fi
                     ;;
                 "USE_DOCKER"|"YOLO") 
                     if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
                         USE_DOCKER=true
+                    elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                        USE_DOCKER=false
                     fi
                     ;;
                 "CONTINUE") 
                     if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
                         CLAUDE_ARGS+=("--continue")
+                    elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                        # Remove --continue if it was added by a lower precedence config
+                        CLAUDE_ARGS=("${CLAUDE_ARGS[@]/--continue}")
                     fi
                     ;;
                 # Pass through other environment variables
@@ -316,14 +332,22 @@ if [ "$SKIP_CONFIG" = false ]; then
         ".claude-yolo.local"
     )
     
+    loaded_configs=()
     for config_file in "${config_files[@]}"; do
         if [ -f "$config_file" ]; then
-            if [ "$VERBOSE" = true ] || [ -n "$CLAUDE_YOLO_DEBUG" ]; then
-                echo "Loading config from: $(blue "$config_file")"
-            fi
+            loaded_configs+=("$config_file")
             load_config_file "$config_file"
         fi
     done
+    
+    # Show loaded configs (unless --quiet or similar)
+    if [ ${#loaded_configs[@]} -gt 0 ] && [ "$QUIET" != true ]; then
+        echo "Config: $(green "Loaded ${#loaded_configs[@]} config file(s)")"
+        for conf in "${loaded_configs[@]}"; do
+            echo "        $(blue "$conf")"
+        done
+        echo ""
+    fi
 fi
 
 i=0
@@ -544,11 +568,18 @@ run_claude_local() {
         ;;
     esac
 
+    # Get Claude version if available
+    CLAUDE_VERSION=""
+    if command -v "$CLAUDE_PATH" >/dev/null 2>&1; then
+        CLAUDE_VERSION=$("$CLAUDE_PATH" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    fi
+
     HEADER_LINE="$(green ">>> CLAUDE-LOCAL v$VERSION") | $AUTH_STATUS"
     [ "$USE_TRACE" = true ] && HEADER_LINE+=" | Trace:$(yellow 'ON')"
 
     echo ""
     echo "$HEADER_LINE"
+    [ -n "$CLAUDE_VERSION" ] && echo "Claude: $(blue "v$CLAUDE_VERSION")"
     echo "Work: $(blue "$(pwd)")"
 
     ENV_VARS=""
@@ -945,6 +976,7 @@ HEADER_LINE="$(green ">>> Claude Code YOLO v$VERSION") | $AUTH_STATUS"
 
 echo ""
 echo "$HEADER_LINE"
+echo "Claude: $(blue "Containerized") $(green '[Docker]')"
 echo "Work: $(blue "$CURRENT_DIR")"
 
 echo "Vols: $(blue "${CURRENT_DIR}:${CURRENT_DIR}") $(green '[workspace]')"
