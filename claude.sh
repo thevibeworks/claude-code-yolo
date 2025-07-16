@@ -158,25 +158,31 @@ yellow() { echo -e "\033[33m$1\033[0m"; }
 bright_yellow() { echo -e "\033[93m$1\033[0m"; }
 blue() { echo -e "\033[34m$1\033[0m"; }
 
-find_config_file() {
-    # Config file precedence:
-    # 1. .claude-yolo.local (highest - gitignored local overrides)
-    # 2. .claude-yolo (project shared - version controlled)
-    # 3. ~/.claude-yolo (user global defaults)
-    
-    local config_files=(
-        ".claude-yolo.local"
-        ".claude-yolo"
-        "$HOME/.claude-yolo"
-    )
-    
-    for config_file in "${config_files[@]}"; do
-        if [ -f "$config_file" ]; then
-            echo "$config_file"
-            return 0
+# Validate environment variable name
+validate_env_name() {
+    local name="$1"
+    if [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Validate volume mount syntax
+validate_volume_mount() {
+    local mount="$1"
+    # Basic validation: must have at least host:container format
+    if [[ "$mount" =~ ^[^:]+:[^:]+$ ]] || [[ "$mount" =~ ^[^:]+:[^:]+:[^:]+$ ]]; then
+        # Check for path traversal attempts
+        if [[ "$mount" =~ \.\. ]]; then
+            echo "warning: volume mount contains '..' path traversal: $mount" >&2
+            return 1
         fi
-    done
-    return 1
+        return 0
+    else
+        echo "warning: invalid volume mount format: $mount" >&2
+        return 1
+    fi
 }
 
 load_config_file() {
@@ -185,10 +191,6 @@ load_config_file() {
     if [ ! -f "$config_file" ]; then
         return 1
     fi
-    
-    # Source the config file in a subshell to avoid polluting main environment
-    # Extract only the variables we need
-    local temp_file=$(mktemp)
     
     # Read and parse config file safely
     while IFS= read -r line || [ -n "$line" ]; do
@@ -202,10 +204,14 @@ load_config_file() {
             local volume_entry="${BASH_REMATCH[1]}"
             # Remove quotes
             volume_entry=$(echo "$volume_entry" | sed 's/^"//;s/"$//')
-            # Expand ~ and $(pwd)
+            # Expand ~ and $(pwd) safely
             volume_entry="${volume_entry/#\~/$HOME}"
-            volume_entry=$(eval echo "$volume_entry" 2>/dev/null || echo "$volume_entry")
-            EXTRA_VOLUMES+=("-v" "$volume_entry")
+            volume_entry="${volume_entry//\$(pwd)/$PWD}"
+            volume_entry="${volume_entry//\$PWD/$PWD}"
+            # Validate volume mount
+            if validate_volume_mount "$volume_entry"; then
+                EXTRA_VOLUMES+=("-v" "$volume_entry")
+            fi
             continue
         fi
         
@@ -215,12 +221,22 @@ load_config_file() {
             # Remove quotes
             env_entry=$(echo "$env_entry" | sed 's/^"//;s/"$//')
             if [[ "$env_entry" == *"="* ]]; then
-                EXTRA_ENV_VARS+=("-e" "$env_entry")
+                # Extract variable name for validation
+                local var_name="${env_entry%%=*}"
+                if validate_env_name "$var_name"; then
+                    EXTRA_ENV_VARS+=("-e" "$env_entry")
+                else
+                    echo "warning: invalid environment variable name in config: $var_name" >&2
+                fi
             else
                 # Get value from environment
-                local env_value="${!env_entry}"
-                if [ -n "$env_value" ]; then
-                    EXTRA_ENV_VARS+=("-e" "$env_entry=$env_value")
+                if validate_env_name "$env_entry"; then
+                    local env_value="${!env_entry}"
+                    if [ -n "$env_value" ]; then
+                        EXTRA_ENV_VARS+=("-e" "$env_entry=$env_value")
+                    fi
+                else
+                    echo "warning: invalid environment variable name in config: $env_entry" >&2
                 fi
             fi
             continue
@@ -280,7 +296,6 @@ load_config_file() {
         fi
     done < "$config_file"
     
-    rm -f "$temp_file"
     return 0
 }
 
@@ -292,15 +307,23 @@ for arg in "$@"; do
     fi
 done
 
-# Load config file if not skipped
+# Load config files if not skipped (in reverse precedence order)
 if [ "$SKIP_CONFIG" = false ]; then
-    config_file=$(find_config_file)
-    if [ $? -eq 0 ]; then
-        if [ "$VERBOSE" = true ] || [ -n "$CLAUDE_YOLO_DEBUG" ]; then
-            echo "Loading config from: $(blue "$config_file")"
+    # Load in order: global → project → local (so local overrides)
+    config_files=(
+        "$HOME/.claude-yolo"
+        ".claude-yolo"
+        ".claude-yolo.local"
+    )
+    
+    for config_file in "${config_files[@]}"; do
+        if [ -f "$config_file" ]; then
+            if [ "$VERBOSE" = true ] || [ -n "$CLAUDE_YOLO_DEBUG" ]; then
+                echo "Loading config from: $(blue "$config_file")"
+            fi
+            load_config_file "$config_file"
         fi
-        load_config_file "$config_file"
-    fi
+    done
 fi
 
 i=0
