@@ -133,9 +133,6 @@ is_claude4_model() {
     "sonnet-4" | "opus-4" | "claude-sonnet-4-20250514" | "claude-opus-4-20250514")
         return 0
         ;;
-    "sonnet-3-7" | "claude-3-7-sonnet-20250219")
-        return 0
-        ;;
     *)
         return 1
         ;;
@@ -430,10 +427,6 @@ run_claude_local() {
     echo ""
     echo "$(blue '────────────────────────────────────')"
     echo ""
-
-    if [ -n "$CONFIG_DIR" ]; then
-        export CLAUDE_CONFIG_DIR="$CONFIG_DIR/.claude"
-    fi
 
     if [ "$USE_TRACE" = true ]; then
         if command -v "$CLAUDE_TRACE_PATH" >/dev/null 2>&1; then
