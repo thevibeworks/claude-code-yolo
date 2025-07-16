@@ -1,0 +1,117 @@
+# Claude YOLO Configuration Example
+# 
+# This file demonstrates all available configuration options.
+# Copy to .claude-yolo (shared) or .claude-yolo.local (gitignored) to use.
+#
+# Config files are loaded in order:
+#   1. ~/.claude-yolo      (global defaults)
+#   2. .claude-yolo        (project shared)
+#   3. .claude-yolo.local  (project local overrides)
+#
+# CLI arguments always override config file settings.
+
+# ========================================
+# Authentication and Model Settings
+# ========================================
+
+# Authentication mode: claude (default), api-key, bedrock, vertex
+AUTH_MODE=claude
+
+# Model selection (sonnet-4, opus-4, sonnet-3-5, haiku-3-5, etc)
+ANTHROPIC_MODEL=sonnet-3-5
+
+# Small/fast model for quick tasks
+ANTHROPIC_SMALL_FAST_MODEL=haiku-3-5
+
+# ========================================
+# Execution Mode
+# ========================================
+
+# Run in Docker container (true) or locally (false)
+YOLO=true
+
+# Enable verbose output
+VERBOSE=false
+
+# Use claude-trace for debugging
+USE_TRACE=false
+
+# ========================================
+# Volume Mounts
+# ========================================
+# Format: VOLUME=host_path:container_path[:options]
+# - Paths starting with ~ are expanded to $HOME
+# - $(pwd) or $PWD expands to current directory
+# - Use :ro for read-only mounts
+
+# SSH keys (read-only)
+VOLUME=~/.ssh:/home/claude/.ssh:ro
+
+# Git configuration
+VOLUME=~/.config/git:/home/claude/.config/git:ro
+
+# Custom scripts/tools
+# VOLUME=~/tools/scripts:/home/claude/scripts:ro
+
+# Project-specific references
+# VOLUME=$(pwd)/docs:/home/claude/project-docs:ro
+
+# ========================================
+# Environment Variables
+# ========================================
+# Format: ENV=VAR_NAME=value or ENV=VAR_NAME (inherit from shell)
+
+# Set specific values
+ENV=NODE_ENV=development
+ENV=DISABLE_PROMPT_CACHING=1
+ENV=MAX_THINKING_TOKENS=0
+
+# Pass through from shell environment
+# ENV=AWS_PROFILE
+# ENV=GITHUB_TOKEN
+# ENV=ANTHROPIC_API_KEY
+
+# Custom app settings
+# ENV=DEBUG=myapp:*
+# ENV=LOG_LEVEL=debug
+
+# ========================================
+# Claude-specific Settings
+# ========================================
+
+# Continue from previous conversation
+CONTINUE=false
+
+# Custom Claude config directory
+# CONFIG_DIR=~/work/claude-configs/project-a
+
+# Maximum output tokens (for API mode)
+# CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
+
+# Disable telemetry
+# DISABLE_TELEMETRY=1
+
+# ========================================
+# AWS Bedrock Settings
+# ========================================
+# Used when AUTH_MODE=bedrock
+
+# AWS_PROFILE_ID=123456789012
+# AWS_REGION=us-west-2
+
+# ========================================
+# Google Vertex AI Settings  
+# ========================================
+# Used when AUTH_MODE=vertex
+
+# GOOGLE_APPLICATION_CREDENTIALS=~/path/to/credentials.json
+
+# ========================================
+# Docker Settings (YOLO mode only)
+# ========================================
+
+# Enable Docker socket mounting (for Docker-in-Docker)
+# CCYOLO_DOCKER_SOCKET=true
+
+# Additional Docker run arguments
+# CCYOLO_EXTRA_VOLUMES=-v /var/run/docker.sock:/var/run/docker.sock
