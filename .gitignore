@@ -145,3 +145,6 @@ dist
 
 # Claude YOLO Pro - Private build directory
 claude-yolo-pro/
+
+# Claude YOLO Config Files - Local overrides
+.claude-yolo.local
