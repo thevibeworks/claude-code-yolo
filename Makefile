@@ -2,7 +2,7 @@
 IMAGE_NAME := ghcr.io/thevibeworks/ccyolo
 TAG := latest
 CONTAINER_NAME := ccyolo-$(shell basename $(PWD))-$(shell date +%s)
-CLAUDE_CODE_VERSION := 1.0.44
+CLAUDE_CODE_VERSION := 1.0.58
 
 export DOCKER_BUILDKIT := 1
 

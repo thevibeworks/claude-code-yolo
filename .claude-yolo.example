@@ -1,0 +1,86 @@
+# Claude YOLO - Sensible Configuration Example
+#
+# This file provides practical defaults for common development workflows.
+# Copy to .claude-yolo (shared) or .claude-yolo.local (gitignored) to use.
+#
+# Config files are loaded in order:
+#   1. ~/.claude-yolo      (global defaults)
+#   2. .claude-yolo        (project shared)
+#   3. .claude-yolo.local  (project local overrides)
+#
+# CLI arguments always override config file settings.
+# Note: Auth mode and model settings are managed via CLI flags, not config files.
+
+# ========================================
+# Git and Development Configuration
+# ========================================
+
+# Mount SSH keys for git operations (read-only)
+VOLUME=~/.ssh:/home/claude/.ssh:ro
+
+# Mount git configuration
+VOLUME=~/.gitconfig:/home/claude/.gitconfig:ro
+VOLUME=~/.config/git:/home/claude/.config/git:ro
+
+# ========================================
+# Claude-specific Environment Variables
+# ========================================
+
+# Maintain project working directory context
+ENV=CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
+
+# Disable telemetry for privacy
+ENV=DISABLE_TELEMETRY=1
+
+# ========================================
+# Common Development Volume Mounts
+# ========================================
+
+# Mount shared development tools and scripts
+# VOLUME=~/tools:/home/claude/tools:ro
+# VOLUME=~/scripts:/home/claude/scripts:ro
+
+# Mount project documentation and references
+# VOLUME=$(pwd)/docs:/home/claude/project-docs:ro
+# VOLUME=$(pwd)/references:/home/claude/references:ro
+# VOLUME=$(pwd)/examples:/home/claude/examples:ro
+
+# Mount additional development directories
+# VOLUME=~/workspace:/home/claude/workspace:ro
+# VOLUME=~/templates:/home/claude/templates:ro
+# VOLUME=~/dotfiles:/home/claude/dotfiles:ro
+
+# Mount cache directories for faster builds
+# VOLUME=~/.cache/pip:/home/claude/.cache/pip
+# VOLUME=~/.npm:/home/claude/.npm:ro
+# VOLUME=~/.cargo:/home/claude/.cargo:ro
+
+# ========================================
+# Development Environment Variables
+# ========================================
+
+# Common development settings
+ENV=NODE_ENV=development
+ENV=LOG_LEVEL=info
+
+# Environment variables with fallback defaults
+# ENV=GITHUB_TOKEN=${GITHUB_TOKEN:-}
+# ENV=NPM_TOKEN=${NPM_TOKEN:-}
+# ENV=API_KEY=${API_KEY:-}
+# ENV=DEBUG=${DEBUG:-}
+# ENV=CACHE_DIR=${CACHE_DIR:-/tmp/cache}
+
+# ========================================
+# Additional Volume Mount Examples
+# ========================================
+
+# Development database storage
+# VOLUME=~/dev-data:/home/claude/dev-data
+
+# Local package/dependency caches (read-only for safety)
+# VOLUME=~/.m2:/home/claude/.m2:ro
+# VOLUME=~/.gradle:/home/claude/.gradle:ro
+# VOLUME=~/.composer:/home/claude/.composer:ro
+
+# Docker-in-Docker support (requires CCYOLO_DOCKER_SOCKET=true)
+# VOLUME=/var/run/docker.sock:/var/run/docker.sock
