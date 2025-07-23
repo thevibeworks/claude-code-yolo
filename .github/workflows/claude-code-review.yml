@@ -23,12 +23,12 @@ jobs:
 
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       issues: write
-      id-token: write
-    env:
-      AWS_REGION: us-west-2
+      actions: read
+      checks: write
+      statuses: write
 
     steps:
       - name: Generate GitHub App token
@@ -37,6 +37,9 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,54 +48,38 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.event.pull_request.merge_commit_sha }}
 
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: us-west-2
-
       - name: Run Claude Code Review
         id: claude-review
+        if: |
+          !contains(github.event.pull_request.title, '[skip-review]') &&
+          !contains(github.event.pull_request.title, '[WIP]')
         uses: anthropics/claude-code-action@beta
         env:
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 8192
         with:
-          use_bedrock: "true"
-          model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: "claude-sonnet-4-20250514"
           github_token: ${{ steps.app-token.outputs.token }}
-
-          # Optional: Specify different Bedrock model (uncomment for Claude Opus 4)
-          # model: "us.anthropic.claude-opus-4-20250514-v1:0"
-
-          # Direct prompt for automated review (no @claude mention needed)
+          allowed_tools: "Bash(docker:*),Bash(make:*),Bash(./claude.sh:*),Bash(shellcheck:*),Bash(gh:*)"
           direct_prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            You are a paranoid security engineer reviewing claude-code-yolo PRs. Your job: find vulnerabilities before they ship.
 
-            Be constructive and helpful in your feedback.
+            Your expertise:
+            - Container escape vectors and privilege boundaries
+            - Shell injection patterns and input sanitization
+            - Multi-auth token lifecycle management
+            - Docker security hardening and volume mount risks
 
-          # Optional: Customize review based on file types
-          # direct_prompt: |
-          #   Review this PR focusing on:
-          #   - For TypeScript files: Type safety and proper interface usage
-          #   - For API endpoints: Security, input validation, and error handling
-          #   - For React components: Performance, accessibility, and best practices
-          #   - For tests: Coverage, edge cases, and test quality
+            Review priorities:
+            - Container security, privilege escalation risks
+            - Auth token handling, secret exposure
+            - Directory traversal, dangerous path access
+            - Shell command injection vectors
+            - Dockerfile best practices, layer optimization
+            - Volume mounting security, permission handling
+            - Cross-platform compatibility (macOS/Linux)
+            - Bash scripting robustness, error handling
+            - Authentication method implementations
+            - Installation script attack surfaces
 
-          # Optional: Different prompts for different authors
-          # direct_prompt: |
-          #   ${{ github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' &&
-          #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
-          #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
-
-          # Optional: Add specific tools for running tests or linting
-          # allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck)"
-
-          # Optional: Skip review for certain conditions
-          # if: |
-          #   !contains(github.event.pull_request.title, '[skip-review]') &&
-          #   !contains(github.event.pull_request.title, '[WIP]')
+            Be direct, ruthless about security. Flag risks immediately. Prefer self-documenting code over comments. Any useless or duplicate comments = PR rejected.

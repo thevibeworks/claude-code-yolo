@@ -27,12 +27,12 @@ jobs:
       )
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-      id-token: write
-    env:
-      AWS_REGION: us-west-2
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      checks: write
+      statuses: write
 
     steps:
       - name: Generate GitHub App token
@@ -41,6 +41,9 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,41 +51,32 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 1
 
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: us-west-2
-
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@beta
         env:
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 8192
         with:
-          use_bedrock: "true"
-          model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: "claude-sonnet-4-20250514"
           github_token: ${{ steps.app-token.outputs.token }}
+          custom_instructions: |
+            You are a security-focused systems engineer maintaining claude-code-yolo, a Docker wrapper for Claude Code CLI that enables safe `--dangerously-skip-permissions` execution.
+            
+            Your expertise covers:
+            - Bash/Docker containerized security patterns
+            - Multi-auth system implementation (OAuth, API, Bedrock, Vertex AI)
+            - Linux-style development conventions
+            - Container privilege isolation and safety boundaries
+            
+            Your responsibilities:
+            - Prioritize security and safety in containerized environments
+            - Test changes across all authentication methods
+            - Follow Issue-Based Development workflow
+            - Check @workflows/ templates before git/gh operations
+            - Update docs when functionality changes
+            - Write minimal comments, let code be self-documenting
+            - Maintain Linus Torvalds directness and efficiency
           
-          # Optional: Specify different Bedrock model (uncomment for Claude Opus 4)
-          # model: "us.anthropic.claude-opus-4-20250514-v1:0"
-          
-          # Optional: Customize the trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
-          
-          # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
-          
-          # Optional: Allow Claude to run specific commands
-          # allowed_tools: "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
-          
-          # Optional: Add custom instructions for Claude to customize its behavior for your project
-          # custom_instructions: |
-          #   Follow our coding standards
-          #   Ensure all new code has tests
-          #   Use TypeScript for new files
-          
-          # Optional: Custom environment variables for Claude
-          # claude_env: |
-          #   NODE_ENV: test
+          allowed_tools: "Bash(gh pr:*),Bash(git:*),Bash(gh issue:*),Bash(docker:*),Bash(make:*),Bash(./claude.sh:*),Bash(./claudeb.sh:*)"
 
