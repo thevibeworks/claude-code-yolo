@@ -186,20 +186,38 @@ validate_volume_mount() {
     fi
 }
 
+# Expand shell-style variable defaults: ${VAR:-default}
+expand_env_value() {
+    local value="$1"
+    local expanded="$value"
+
+    while [[ "$expanded" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\} ]]; do
+        local full_match="${BASH_REMATCH[0]}"
+        local var_name="${BASH_REMATCH[1]}"
+        local default_value="${BASH_REMATCH[3]}"
+
+        local replacement="${!var_name:-$default_value}"
+
+        expanded="${expanded//$full_match/$replacement}"
+    done
+
+    echo "$expanded"
+}
+
 load_config_file() {
     local config_file="$1"
-    
+
     if [ ! -f "$config_file" ]; then
         return 1
     fi
-    
+
     # Read and parse config file safely
     while IFS= read -r line || [ -n "$line" ]; do
         # Skip comments and empty lines
         if [[ "$line" =~ ^[[:space:]]*# ]] || [[ "$line" =~ ^[[:space:]]*$ ]]; then
             continue
         fi
-        
+
         # Handle volume entries (VOLUME=...)
         if [[ "$line" =~ ^[[:space:]]*VOLUME[[:space:]]*=[[:space:]]*(.+)$ ]]; then
             local volume_entry="${BASH_REMATCH[1]}"
@@ -215,17 +233,21 @@ load_config_file() {
             fi
             continue
         fi
-        
+
         # Handle environment variable entries (ENV=...)
         if [[ "$line" =~ ^[[:space:]]*ENV[[:space:]]*=[[:space:]]*(.+)$ ]]; then
             local env_entry="${BASH_REMATCH[1]}"
             # Remove quotes
             env_entry=$(echo "$env_entry" | sed 's/^"//;s/"$//')
             if [[ "$env_entry" == *"="* ]]; then
-                # Extract variable name for validation
+                # Extract variable name and value
                 local var_name="${env_entry%%=*}"
+                local var_value="${env_entry#*=}"
+
                 if validate_env_name "$var_name"; then
-                    EXTRA_ENV_VARS+=("-e" "$env_entry")
+                    # Expand any ${VAR:-default} syntax in the value
+                    var_value=$(expand_env_value "$var_value")
+                    EXTRA_ENV_VARS+=("-e" "$var_name=$var_value")
                 else
                     echo "warning: invalid environment variable name in config: $var_name" >&2
                 fi
@@ -242,76 +264,76 @@ load_config_file() {
             fi
             continue
         fi
-        
+
         # Handle simple variable assignments
         if [[ "$line" =~ ^[[:space:]]*([A-Z_]+)[[:space:]]*=[[:space:]]*(.+)$ ]]; then
             local var_name="${BASH_REMATCH[1]}"
             local var_value="${BASH_REMATCH[2]}"
-            
+
             # Remove quotes from value
             var_value=$(echo "$var_value" | sed 's/^"//;s/"$//')
-            
+
             # Expand ~ in paths
             var_value="${var_value/#\~/$HOME}"
-            
+
             case "$var_name" in
-                "ANTHROPIC_MODEL") export ANTHROPIC_MODEL="$var_value" ;;
-                "AUTH_MODE") AUTH_MODE="$var_value" ;;
-                "CONFIG_DIR") 
-                    CONFIG_DIR="$var_value"
-                    # Validate path - no traversal allowed
-                    if [[ "$CONFIG_DIR" =~ \.\. ]]; then
-                        echo "warning: CONFIG_DIR contains path traversal '..': $CONFIG_DIR" >&2
-                        CONFIG_DIR=""
-                    else
-                        # Create directory if it doesn't exist
-                        if [ ! -d "$CONFIG_DIR" ]; then
-                            mkdir -p "$CONFIG_DIR"
-                        fi
-                        if [ ! -f "$CONFIG_DIR/.claude.json" ]; then
-                            echo '{}' >"$CONFIG_DIR/.claude.json"
-                        fi
+            "ANTHROPIC_MODEL") export ANTHROPIC_MODEL="$var_value" ;;
+            "AUTH_MODE") AUTH_MODE="$var_value" ;;
+            "CONFIG_DIR")
+                CONFIG_DIR="$var_value"
+                # Validate path - no traversal allowed
+                if [[ "$CONFIG_DIR" =~ \.\. ]]; then
+                    echo "warning: CONFIG_DIR contains path traversal '..': $CONFIG_DIR" >&2
+                    CONFIG_DIR=""
+                else
+                    # Create directory if it doesn't exist
+                    if [ ! -d "$CONFIG_DIR" ]; then
+                        mkdir -p "$CONFIG_DIR"
                     fi
-                    ;;
-                "USE_TRACE"|"TRACE") 
-                    if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                        USE_TRACE=true
-                    elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
-                        USE_TRACE=false
+                    if [ ! -f "$CONFIG_DIR/.claude.json" ]; then
+                        echo '{}' >"$CONFIG_DIR/.claude.json"
                     fi
-                    ;;
-                "VERBOSE") 
-                    if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                        VERBOSE=true
-                    elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
-                        VERBOSE=false
-                    fi
-                    ;;
-                "USE_DOCKER"|"YOLO") 
-                    if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                        USE_DOCKER=true
-                    elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
-                        USE_DOCKER=false
-                    fi
-                    ;;
-                "CONTINUE") 
-                    if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                        CLAUDE_ARGS+=("--continue")
-                    elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
-                        # Remove --continue if it was added by a lower precedence config
-                        CLAUDE_ARGS=("${CLAUDE_ARGS[@]/--continue}")
-                    fi
-                    ;;
-                # Pass through other environment variables
-                *) 
-                    if [[ "$var_name" =~ ^(DISABLE_|MAX_|ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_) ]]; then
-                        export "$var_name"="$var_value"
-                    fi
-                    ;;
+                fi
+                ;;
+            "USE_TRACE" | "TRACE")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    USE_TRACE=true
+                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                    USE_TRACE=false
+                fi
+                ;;
+            "VERBOSE")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    VERBOSE=true
+                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                    VERBOSE=false
+                fi
+                ;;
+            "USE_DOCKER" | "YOLO")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    USE_DOCKER=true
+                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                    USE_DOCKER=false
+                fi
+                ;;
+            "CONTINUE")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    CLAUDE_ARGS+=("--continue")
+                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                    # Remove --continue if it was added by a lower precedence config
+                    CLAUDE_ARGS=("${CLAUDE_ARGS[@]/--continue/}")
+                fi
+                ;;
+            # Pass through other environment variables
+            *)
+                if [[ "$var_name" =~ ^(DISABLE_|MAX_|ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_) ]]; then
+                    export "$var_name"="$var_value"
+                fi
+                ;;
             esac
         fi
-    done < "$config_file"
-    
+    done <"$config_file"
+
     return 0
 }
 
@@ -331,7 +353,7 @@ if [ "$SKIP_CONFIG" = false ]; then
         ".claude-yolo"
         ".claude-yolo.local"
     )
-    
+
     loaded_configs=()
     for config_file in "${config_files[@]}"; do
         if [ -f "$config_file" ]; then
@@ -339,15 +361,9 @@ if [ "$SKIP_CONFIG" = false ]; then
             load_config_file "$config_file"
         fi
     done
-    
-    # Show loaded configs (unless --quiet or similar)
-    if [ ${#loaded_configs[@]} -gt 0 ] && [ "$QUIET" != true ]; then
-        echo "Config: $(green "Loaded ${#loaded_configs[@]} config file(s)")"
-        for conf in "${loaded_configs[@]}"; do
-            echo "        $(blue "$conf")"
-        done
-        echo ""
-    fi
+
+    # Store loaded configs for later display (don't show here)
+    # Will be displayed after header in both local and docker modes
 fi
 
 i=0
@@ -574,13 +590,28 @@ run_claude_local() {
         CLAUDE_VERSION=$("$CLAUDE_PATH" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     fi
 
-    HEADER_LINE="$(green ">>> CLAUDE-LOCAL v$VERSION") | $AUTH_STATUS"
+    HEADER_LINE="$(green ">>> Claude Code YOLO v$VERSION") | $AUTH_STATUS"
     [ "$USE_TRACE" = true ] && HEADER_LINE+=" | Trace:$(yellow 'ON')"
 
     echo ""
     echo "$HEADER_LINE"
-    [ -n "$CLAUDE_VERSION" ] && echo "Claude: $(blue "v$CLAUDE_VERSION")"
+    
+    # Show Claude version with compact format
+    if [ -n "$CLAUDE_VERSION" ]; then
+        echo "Claude: $(blue "Local") $(green "(v$CLAUDE_VERSION)")"
+    else
+        echo "Claude: $(blue "Local")"
+    fi
+    
     echo "Work: $(blue "$(pwd)")"
+
+    # Show config loaded information
+    if [ ${#loaded_configs[@]} -gt 0 ] && [ "$QUIET" != true ]; then
+        echo "Config: $(green "Loaded ${#loaded_configs[@]} config file(s)")"
+        for conf in "${loaded_configs[@]}"; do
+            echo "        $(blue "$conf")"
+        done
+    fi
 
     ENV_VARS=""
     [ -n "$ANTHROPIC_MODEL" ] && ENV_VARS+="   $(green 'MODEL'): $ANTHROPIC_MODEL\n"
@@ -812,6 +843,9 @@ CLAUDE_GID="${CLAUDE_GID:-$(id -g)}"
 DOCKER_ARGS+=("-e" "CLAUDE_UID=$CLAUDE_UID")
 DOCKER_ARGS+=("-e" "CLAUDE_GID=$CLAUDE_GID")
 
+# Pass environment variable to capture Claude version from container
+DOCKER_ARGS+=("-e" "DETECT_CLAUDE_VERSION=true")
+
 case "$AUTH_MODE" in
 "bedrock")
     if [ -z "$AWS_PROFILE_ID" ]; then
@@ -976,8 +1010,18 @@ HEADER_LINE="$(green ">>> Claude Code YOLO v$VERSION") | $AUTH_STATUS"
 
 echo ""
 echo "$HEADER_LINE"
+
+# Show Claude version with Docker info - will be detected at runtime
 echo "Claude: $(blue "Containerized") $(green '[Docker]')"
 echo "Work: $(blue "$CURRENT_DIR")"
+
+# Show config loaded information
+if [ ${#loaded_configs[@]} -gt 0 ] && [ "$QUIET" != true ]; then
+    echo "Config: $(green "Loaded ${#loaded_configs[@]} config file(s)")"
+    for conf in "${loaded_configs[@]}"; do
+        echo "        $(blue "$conf")"
+    done
+fi
 
 echo "Vols: $(blue "${CURRENT_DIR}:${CURRENT_DIR}") $(green '[workspace]')"
 
@@ -1013,7 +1057,22 @@ esac
 if [ ${#EXTRA_VOLUMES[@]} -gt 0 ]; then
     for volume in "${EXTRA_VOLUMES[@]}"; do
         if [ "$volume" != "-v" ]; then
-            echo "      $(blue "$volume") $(yellow '[user]')"
+            # Determine volume type based on mount path
+            volume_type="[user]"
+            if [[ "$volume" == *"/.ssh:"* ]]; then
+                volume_type="[ssh]"
+            elif [[ "$volume" == *"/.gitconfig:"* ]] || [[ "$volume" == *"/.config/git:"* ]]; then
+                volume_type="[git]"
+            elif [[ "$volume" == *"/tools:"* ]] || [[ "$volume" == *"/scripts:"* ]]; then
+                volume_type="[tools]"
+            elif [[ "$volume" == *"/docs:"* ]] || [[ "$volume" == *"/references:"* ]]; then
+                volume_type="[docs]"
+            elif [[ "$volume" == *"/.cache/"* ]] || [[ "$volume" == *"/.npm:"* ]] || [[ "$volume" == *"/.cargo:"* ]]; then
+                volume_type="[cache]"
+            elif [[ "$volume" == *":ro"* ]]; then
+                volume_type="[readonly]"
+            fi
+            echo "      $(blue "$volume") $(yellow "$volume_type")"
         fi
     done
 fi

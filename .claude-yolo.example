@@ -1,6 +1,6 @@
-# Claude YOLO Configuration Example
-# 
-# This file demonstrates all available configuration options.
+# Claude YOLO - Sensible Configuration Example
+#
+# This file provides practical defaults for common development workflows.
 # Copy to .claude-yolo (shared) or .claude-yolo.local (gitignored) to use.
 #
 # Config files are loaded in order:
@@ -9,109 +9,78 @@
 #   3. .claude-yolo.local  (project local overrides)
 #
 # CLI arguments always override config file settings.
+# Note: Auth mode and model settings are managed via CLI flags, not config files.
 
 # ========================================
-# Authentication and Model Settings
+# Git and Development Configuration
 # ========================================
 
-# Authentication mode: claude (default), api-key, bedrock, vertex
-AUTH_MODE=claude
-
-# Model selection (sonnet-4, opus-4, sonnet-3-5, haiku-3-5, etc)
-ANTHROPIC_MODEL=sonnet-3-5
-
-# Small/fast model for quick tasks
-ANTHROPIC_SMALL_FAST_MODEL=haiku-3-5
-
-# ========================================
-# Execution Mode
-# ========================================
-
-# Run in Docker container (true) or locally (false)
-YOLO=true
-
-# Enable verbose output
-VERBOSE=false
-
-# Use claude-trace for debugging
-USE_TRACE=false
-
-# ========================================
-# Volume Mounts
-# ========================================
-# Format: VOLUME=host_path:container_path[:options]
-# - Paths starting with ~ are expanded to $HOME
-# - $(pwd) or $PWD expands to current directory
-# - Use :ro for read-only mounts
-
-# SSH keys (read-only)
+# Mount SSH keys for git operations (read-only)
 VOLUME=~/.ssh:/home/claude/.ssh:ro
 
-# Git configuration
+# Mount git configuration
+VOLUME=~/.gitconfig:/home/claude/.gitconfig:ro
 VOLUME=~/.config/git:/home/claude/.config/git:ro
 
-# Custom scripts/tools
-# VOLUME=~/tools/scripts:/home/claude/scripts:ro
+# ========================================
+# Claude-specific Environment Variables
+# ========================================
 
-# Project-specific references
+# Maintain project working directory context
+ENV=CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
+
+# Disable telemetry for privacy
+ENV=DISABLE_TELEMETRY=1
+
+# ========================================
+# Common Development Volume Mounts
+# ========================================
+
+# Mount shared development tools and scripts
+# VOLUME=~/tools:/home/claude/tools:ro
+# VOLUME=~/scripts:/home/claude/scripts:ro
+
+# Mount project documentation and references
 # VOLUME=$(pwd)/docs:/home/claude/project-docs:ro
+# VOLUME=$(pwd)/references:/home/claude/references:ro
+# VOLUME=$(pwd)/examples:/home/claude/examples:ro
+
+# Mount additional development directories
+# VOLUME=~/workspace:/home/claude/workspace:ro
+# VOLUME=~/templates:/home/claude/templates:ro
+# VOLUME=~/dotfiles:/home/claude/dotfiles:ro
+
+# Mount cache directories for faster builds
+# VOLUME=~/.cache/pip:/home/claude/.cache/pip
+# VOLUME=~/.npm:/home/claude/.npm:ro
+# VOLUME=~/.cargo:/home/claude/.cargo:ro
 
 # ========================================
-# Environment Variables
+# Development Environment Variables
 # ========================================
-# Format: ENV=VAR_NAME=value or ENV=VAR_NAME (inherit from shell)
 
-# Set specific values
+# Common development settings
 ENV=NODE_ENV=development
-ENV=DISABLE_PROMPT_CACHING=1
-ENV=MAX_THINKING_TOKENS=0
+ENV=LOG_LEVEL=info
 
-# Pass through from shell environment
-# ENV=AWS_PROFILE
-# ENV=GITHUB_TOKEN
-# ENV=ANTHROPIC_API_KEY
-
-# Custom app settings
-# ENV=DEBUG=myapp:*
-# ENV=LOG_LEVEL=debug
+# Environment variables with fallback defaults
+# ENV=GITHUB_TOKEN=${GITHUB_TOKEN:-}
+# ENV=NPM_TOKEN=${NPM_TOKEN:-}
+# ENV=API_KEY=${API_KEY:-}
+# ENV=DEBUG=${DEBUG:-}
+# ENV=CACHE_DIR=${CACHE_DIR:-/tmp/cache}
 
 # ========================================
-# Claude-specific Settings
+# Additional Volume Mount Examples
 # ========================================
 
-# Continue from previous conversation
-CONTINUE=false
+# Development database storage
+# VOLUME=~/dev-data:/home/claude/dev-data
 
-# Custom Claude config directory
-# CONFIG_DIR=~/work/claude-configs/project-a
+# Local package/dependency caches (read-only for safety)
+# VOLUME=~/.m2:/home/claude/.m2:ro
+# VOLUME=~/.gradle:/home/claude/.gradle:ro
+# VOLUME=~/.composer:/home/claude/.composer:ro
 
-# Maximum output tokens (for API mode)
-# CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
-
-# Disable telemetry
-# DISABLE_TELEMETRY=1
-
-# ========================================
-# AWS Bedrock Settings
-# ========================================
-# Used when AUTH_MODE=bedrock
-
-# AWS_PROFILE_ID=123456789012
-# AWS_REGION=us-west-2
-
-# ========================================
-# Google Vertex AI Settings  
-# ========================================
-# Used when AUTH_MODE=vertex
-
-# GOOGLE_APPLICATION_CREDENTIALS=~/path/to/credentials.json
-
-# ========================================
-# Docker Settings (YOLO mode only)
-# ========================================
-
-# Enable Docker socket mounting (for Docker-in-Docker)
-# CCYOLO_DOCKER_SOCKET=true
-
-# Additional Docker run arguments
-# CCYOLO_EXTRA_VOLUMES=-v /var/run/docker.sock:/var/run/docker.sock
+# Docker-in-Docker support (requires CCYOLO_DOCKER_SOCKET=true)
+# VOLUME=/var/run/docker.sock:/var/run/docker.sock

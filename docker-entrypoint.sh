@@ -6,8 +6,26 @@ CLAUDE_UID="${CLAUDE_UID:-1001}"
 CLAUDE_GID="${CLAUDE_GID:-1001}"
 CLAUDE_HOME="${CLAUDE_HOME:-/home/claude}"
 
+get_claude_version() {
+    local claude_version=""
+    for path in "/usr/local/bin/claude" "/usr/bin/claude" "$(which claude 2>/dev/null)"; do
+        if [ -x "$path" ]; then
+            claude_version=$($path --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            break
+        fi
+    done
+    echo "$claude_version"
+}
+
 show_environment_info() {
+    if [ -n "$CLAUDE_VERSION" ]; then
+        echo "[claude-yolo] Starting Claude Code v$CLAUDE_VERSION"
+    else
+        echo "[claude-yolo] Claude Code (version detection failed)"
+    fi
+
     if [ "$VERBOSE" = "true" ]; then
+        echo ""
         echo "Claude Code YOLO Environment"
         echo "================================"
         echo "Working Directory: $(pwd)"
@@ -139,6 +157,8 @@ build_gosu_env_cmd() {
 
 main() {
     export PATH="/home/claude/.local/bin:/home/claude/.npm-global/bin:/root/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH"
+
+    export CLAUDE_VERSION="$(get_claude_version)"
 
     show_environment_info
 
