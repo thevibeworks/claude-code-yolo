@@ -32,12 +32,14 @@ show_help() {
     echo "Authentication Options:"
     echo "  --auth-with METHOD          Set authentication method:"
     echo "                              claude    - Claude app authentication (OAuth) [default]"
+    echo "                              oat       - Claude OAuth token (CLAUDE_CODE_OAUTH_TOKEN) [EXPERIMENTAL]"
     echo "                              api-key   - Anthropic API key"
     echo "                              bedrock   - AWS Bedrock"
     echo "                              vertex    - Google Vertex AI"
     echo ""
     echo "  Auth flags (shortcuts):"
     echo "  --claude                    Use Claude app authentication"
+    echo "  --oat, -t                   Use Claude OAuth token [EXPERIMENTAL]"
     echo "  --api-key, -a               Use Anthropic API key"
     echo "  --bedrock, -b               Use AWS Bedrock"
     echo "  --vertex                    Use Google Vertex AI"
@@ -46,6 +48,12 @@ show_help() {
     echo "  --config DIR, -c DIR        Use custom Claude config home instead of ~/.claude"
     echo "                              Creates directory and .claude.json if they don't exist"
     echo "                              Should contain .claude/ directory and .claude.json file"
+    echo "  --no-config                 Skip loading project config files (.claude-yolo)"
+    echo ""
+    echo "Project Config Files (loaded automatically in order):"
+    echo "  .claude-yolo.local          Project-local overrides (gitignored)"
+    echo "  .claude-yolo                Project-shared config (version controlled)"
+    echo "  ~/.claude-yolo              User global defaults"
     echo ""
     echo "Volume Mounting (Docker mode only):"
     echo "  -v SOURCE:TARGET[:OPTIONS]  Mount volume (Docker syntax)"
@@ -62,6 +70,7 @@ show_help() {
     echo "  AWS_PROFILE_ID              AWS account ID (required for bedrock)"
     echo "  AWS_REGION                  AWS region (default: $DEFAULT_AWS_REGION)"
     echo "  ANTHROPIC_API_KEY           Anthropic API key (required for api-key)"
+    echo "  CLAUDE_CODE_OAUTH_TOKEN     Claude OAuth token (required for oat) [EXPERIMENTAL]"
     echo "  HTTP_PROXY                  HTTP proxy"
     echo "  HTTPS_PROXY                 HTTPS proxy"
     echo "  CCYOLO_DOCKER               Set to 'true' to always use Docker mode"
@@ -80,17 +89,30 @@ show_help() {
     echo ""
     echo "Examples:"
     echo "  $0                                            # Claude app auth (default)"
+    echo "  $0 --auth-with oat -p 'prompt'                # Use OAuth token (non-interactive)"
     echo "  $0 --auth-with api-key                        # Use API key"
     echo "  $0 --auth-with bedrock                        # Use AWS Bedrock"
     echo "  $0 --auth-with vertex                         # Use Google Vertex AI"
     echo "  $0 --yolo                                     # YOLO mode with default auth"
+    echo "  $0 --yolo --auth-with oat -p 'prompt'         # YOLO mode with OAuth token (non-interactive)"
     echo "  $0 --yolo --auth-with bedrock                 # YOLO mode with Bedrock"
     echo "  $0 --yolo -v ~/.ssh:/home/claude/.ssh:ro      # YOLO mode with volume mount"
     echo "  $0 --yolo -e NODE_ENV=dev -e DEBUG            # YOLO mode with env vars"
     echo "  $0 --config ~/work-claude --yolo              # YOLO mode with custom config home"
+    echo "  $0 --no-config --yolo                         # YOLO mode ignoring project config"
     echo "  export DEBUG=myapp:*; $0 --yolo -e DEBUG      # Pass env var from shell"
     echo "  ANTHROPIC_MODEL=opus-4 $0                     # Use Opus 4 with default auth"
+    echo "  CLAUDE_CODE_OAUTH_TOKEN=xxx $0 --oat -p 'prompt' # Use OAuth token (non-interactive)"
     echo "  GH_TOKEN=ghp_xxx $0 --yolo                    # YOLO mode with GitHub CLI auth"
+    echo ""
+    echo "Config file example (.claude-yolo):"
+    echo "  # Basic settings"
+    echo "  ANTHROPIC_MODEL=sonnet-3-5"
+    echo "  AUTH_MODE=bedrock"
+    echo "  YOLO=true"
+    echo "  # Volumes and env vars"
+    echo "  VOLUME=~/.ssh:/home/claude/.ssh:ro"
+    echo "  ENV=NODE_ENV=production"
     echo ""
 }
 
@@ -134,12 +156,227 @@ OPEN_SHELL=false
 AUTH_MODE="claude"
 EXTRA_VOLUMES=()
 EXTRA_ENV_VARS=()
+EXTRA_DOCKER_ARGS=()
 CONFIG_DIR=""
+SKIP_CONFIG=false
+QUIET=false
 
 green() { echo -e "\033[32m$1\033[0m"; }
 yellow() { echo -e "\033[33m$1\033[0m"; }
 bright_yellow() { echo -e "\033[93m$1\033[0m"; }
 blue() { echo -e "\033[34m$1\033[0m"; }
+
+# Validate environment variable name
+validate_env_name() {
+    local name="$1"
+    if [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Validate volume mount syntax
+validate_volume_mount() {
+    local mount="$1"
+    # Basic validation: must have at least host:container format
+    if [[ "$mount" =~ ^[^:]+:[^:]+$ ]] || [[ "$mount" =~ ^[^:]+:[^:]+:[^:]+$ ]]; then
+        # Check for path traversal attempts
+        if [[ "$mount" =~ \.\. ]]; then
+            echo "warning: volume mount contains '..' path traversal: $mount" >&2
+            return 1
+        fi
+        return 0
+    else
+        echo "warning: invalid volume mount format: $mount" >&2
+        return 1
+    fi
+}
+
+# Expand shell-style variable defaults: ${VAR:-default}
+expand_env_value() {
+    local value="$1"
+    local expanded="$value"
+
+    while [[ "$expanded" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\} ]]; do
+        local full_match="${BASH_REMATCH[0]}"
+        local var_name="${BASH_REMATCH[1]}"
+        local default_value="${BASH_REMATCH[3]}"
+
+        local replacement="${!var_name:-$default_value}"
+
+        expanded="${expanded//$full_match/$replacement}"
+    done
+
+    echo "$expanded"
+}
+
+load_config_file() {
+    local config_file="$1"
+
+    if [ ! -f "$config_file" ]; then
+        return 1
+    fi
+
+    # Read and parse config file safely
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        if [[ "$line" =~ ^[[:space:]]*# ]] || [[ "$line" =~ ^[[:space:]]*$ ]]; then
+            continue
+        fi
+
+        # Handle volume entries (VOLUME=...)
+        if [[ "$line" =~ ^[[:space:]]*VOLUME[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+            local volume_entry="${BASH_REMATCH[1]}"
+            # Remove quotes
+            volume_entry=$(echo "$volume_entry" | sed 's/^"//;s/"$//')
+            # Expand ~ and $(pwd) safely
+            volume_entry="${volume_entry/#\~/$HOME}"
+            volume_entry="${volume_entry//\$(pwd)/$PWD}"
+            volume_entry="${volume_entry//\$PWD/$PWD}"
+            # Validate volume mount
+            if validate_volume_mount "$volume_entry"; then
+                EXTRA_VOLUMES+=("-v" "$volume_entry")
+            fi
+            continue
+        fi
+
+        # Handle environment variable entries (ENV=...)
+        if [[ "$line" =~ ^[[:space:]]*ENV[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+            local env_entry="${BASH_REMATCH[1]}"
+            # Remove quotes
+            env_entry=$(echo "$env_entry" | sed 's/^"//;s/"$//')
+            if [[ "$env_entry" == *"="* ]]; then
+                # Extract variable name and value
+                local var_name="${env_entry%%=*}"
+                local var_value="${env_entry#*=}"
+
+                if validate_env_name "$var_name"; then
+                    # Expand any ${VAR:-default} syntax in the value
+                    var_value=$(expand_env_value "$var_value")
+                    EXTRA_ENV_VARS+=("-e" "$var_name=$var_value")
+                else
+                    echo "warning: invalid environment variable name in config: $var_name" >&2
+                fi
+            else
+                # Get value from environment
+                if validate_env_name "$env_entry"; then
+                    local env_value="${!env_entry}"
+                    if [ -n "$env_value" ]; then
+                        EXTRA_ENV_VARS+=("-e" "$env_entry=$env_value")
+                    fi
+                else
+                    echo "warning: invalid environment variable name in config: $env_entry" >&2
+                fi
+            fi
+            continue
+        fi
+
+        # Handle simple variable assignments
+        if [[ "$line" =~ ^[[:space:]]*([A-Z_]+)[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+            local var_name="${BASH_REMATCH[1]}"
+            local var_value="${BASH_REMATCH[2]}"
+
+            # Remove quotes from value
+            var_value=$(echo "$var_value" | sed 's/^"//;s/"$//')
+
+            # Expand ~ in paths
+            var_value="${var_value/#\~/$HOME}"
+
+            case "$var_name" in
+            "ANTHROPIC_MODEL") export ANTHROPIC_MODEL="$var_value" ;;
+            "AUTH_MODE") AUTH_MODE="$var_value" ;;
+            "CONFIG_DIR")
+                CONFIG_DIR="$var_value"
+                # Validate path - no traversal allowed
+                if [[ "$CONFIG_DIR" =~ \.\. ]]; then
+                    echo "warning: CONFIG_DIR contains path traversal '..': $CONFIG_DIR" >&2
+                    CONFIG_DIR=""
+                else
+                    # Create directory if it doesn't exist
+                    if [ ! -d "$CONFIG_DIR" ]; then
+                        mkdir -p "$CONFIG_DIR"
+                    fi
+                    if [ ! -f "$CONFIG_DIR/.claude.json" ]; then
+                        echo '{}' >"$CONFIG_DIR/.claude.json"
+                    fi
+                fi
+                ;;
+            "USE_TRACE" | "TRACE")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    USE_TRACE=true
+                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                    USE_TRACE=false
+                fi
+                ;;
+            "VERBOSE")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    VERBOSE=true
+                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                    VERBOSE=false
+                fi
+                ;;
+            "USE_DOCKER" | "YOLO")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    USE_DOCKER=true
+                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                    USE_DOCKER=false
+                fi
+                ;;
+            "CONTINUE")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    CLAUDE_ARGS+=("--continue")
+                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
+                    # Remove --continue if it was added by a lower precedence config
+                    CLAUDE_ARGS=("${CLAUDE_ARGS[@]/--continue/}")
+                fi
+                ;;
+            "HOST_NET")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    EXTRA_DOCKER_ARGS+=("--net" "host")
+                fi
+                ;;
+            # Pass through other environment variables
+            *)
+                if [[ "$var_name" =~ ^(DISABLE_|MAX_|ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_) ]]; then
+                    export "$var_name"="$var_value"
+                fi
+                ;;
+            esac
+        fi
+    done <"$config_file"
+
+    return 0
+}
+
+# Check for --no-config flag first (before loading config)
+for arg in "$@"; do
+    if [ "$arg" = "--no-config" ]; then
+        SKIP_CONFIG=true
+        break
+    fi
+done
+
+# Load config files if not skipped (in reverse precedence order)
+if [ "$SKIP_CONFIG" = false ]; then
+    # Load in order: global → project → local (so local overrides)
+    config_files=(
+        "$HOME/.claude-yolo"
+        ".claude-yolo"
+        ".claude-yolo.local"
+    )
+
+    loaded_configs=()
+    for config_file in "${config_files[@]}"; do
+        if [ -f "$config_file" ]; then
+            loaded_configs+=("$config_file")
+            load_config_file "$config_file"
+        fi
+    done
+
+    # Store loaded configs for later display (don't show here)
+    # Will be displayed after header in both local and docker modes
+fi
 
 i=0
 args=("$@")
@@ -163,6 +400,10 @@ while [ $i -lt ${#args[@]} ]; do
         VERBOSE=true
         i=$((i + 1))
         ;;
+    --no-config)
+        # Already handled before config loading, just skip it here
+        i=$((i + 1))
+        ;;
     --yolo)
         USE_DOCKER=true
         i=$((i + 1))
@@ -171,13 +412,13 @@ while [ $i -lt ${#args[@]} ]; do
         if [ $((i + 1)) -lt ${#args[@]} ]; then
             next_arg="${args[$((i + 1))]}"
             case "$next_arg" in
-            claude | api-key | bedrock | vertex)
+            claude | oat | api-key | bedrock | vertex)
                 AUTH_MODE="$next_arg"
                 i=$((i + 2))
                 ;;
             *)
                 echo "error: Invalid auth method: $next_arg" >&2
-                echo "Valid methods: claude, api-key, bedrock, vertex" >&2
+                echo "Valid methods: claude, oat, api-key, bedrock, vertex" >&2
                 exit 1
                 ;;
             esac
@@ -188,6 +429,10 @@ while [ $i -lt ${#args[@]} ]; do
         ;;
     --claude)
         AUTH_MODE="claude"
+        i=$((i + 1))
+        ;;
+    --oat | -t)
+        AUTH_MODE="oat"
         i=$((i + 1))
         ;;
     --api-key | -a)
@@ -254,6 +499,11 @@ while [ $i -lt ${#args[@]} ]; do
     --shell)
         OPEN_SHELL=true
         USE_DOCKER=true
+        i=$((i + 1))
+        ;;
+    --host-net)
+        # Enable host network mode for Docker
+        EXTRA_DOCKER_ARGS+=("--net" "host")
         i=$((i + 1))
         ;;
     *)
@@ -345,6 +595,19 @@ run_claude_local() {
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
         ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
         ;;
+    "oat")
+        AUTH_STATUS="$(yellow 'OAT')"
+        if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "error: CLAUDE_CODE_OAUTH_TOKEN not set. Required for --oat mode."
+            echo "Generate token with: claude setup-token"
+            exit 1
+        fi
+        echo "$(yellow '[EXPERIMENTAL]') OAuth token mode only works with -p flag (non-interactive)"
+        export CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"
+        unset ANTHROPIC_API_KEY
+        unset CLAUDE_CODE_USE_BEDROCK
+        unset CLAUDE_CODE_USE_VERTEX
+        ;;
     *)
         AUTH_STATUS="$(green 'OAuth')"
         if [ ! -d "$HOME/.claude" ]; then
@@ -355,12 +618,34 @@ run_claude_local() {
         ;;
     esac
 
-    HEADER_LINE="$(green ">>> CLAUDE-LOCAL v$VERSION") | $AUTH_STATUS"
+    # Get Claude version if available
+    CLAUDE_VERSION=""
+    if command -v "$CLAUDE_PATH" >/dev/null 2>&1; then
+        CLAUDE_VERSION=$("$CLAUDE_PATH" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    fi
+
+    HEADER_LINE="$(green ">>> Claude Code YOLO v$VERSION") | $AUTH_STATUS"
     [ "$USE_TRACE" = true ] && HEADER_LINE+=" | Trace:$(yellow 'ON')"
 
     echo ""
     echo "$HEADER_LINE"
+    
+    # Show Claude version with compact format
+    if [ -n "$CLAUDE_VERSION" ]; then
+        echo "Claude: $(blue "Local") $(green "(v$CLAUDE_VERSION)")"
+    else
+        echo "Claude: $(blue "Local")"
+    fi
+    
     echo "Work: $(blue "$(pwd)")"
+
+    # Show config loaded information
+    if [ ${#loaded_configs[@]} -gt 0 ] && [ "$QUIET" != true ]; then
+        echo "Config: $(green "Loaded ${#loaded_configs[@]} config file(s)")"
+        for conf in "${loaded_configs[@]}"; do
+            echo "        $(blue "$conf")"
+        done
+    fi
 
     ENV_VARS=""
     [ -n "$ANTHROPIC_MODEL" ] && ENV_VARS+="   $(green 'MODEL'): $ANTHROPIC_MODEL\n"
@@ -524,6 +809,13 @@ if [ ${#EXTRA_ENV_VARS[@]} -gt 0 ]; then
     done
 fi
 
+# Pass extra Docker arguments specified with --net, --add-host, etc.
+if [ ${#EXTRA_DOCKER_ARGS[@]} -gt 0 ]; then
+    for docker_arg in "${EXTRA_DOCKER_ARGS[@]}"; do
+        DOCKER_ARGS+=("$docker_arg")
+    done
+fi
+
 # Pass proxy environment variables, translating localhost/127.0.0.1 to host.docker.internal
 if [ -n "$HTTP_PROXY" ]; then
     HTTP_PROXY_DOCKER=$(echo "$HTTP_PROXY" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
@@ -591,6 +883,9 @@ CLAUDE_UID="${CLAUDE_UID:-$(id -u)}"
 CLAUDE_GID="${CLAUDE_GID:-$(id -g)}"
 DOCKER_ARGS+=("-e" "CLAUDE_UID=$CLAUDE_UID")
 DOCKER_ARGS+=("-e" "CLAUDE_GID=$CLAUDE_GID")
+
+# Pass environment variable to capture Claude version from container
+DOCKER_ARGS+=("-e" "DETECT_CLAUDE_VERSION=true")
 
 case "$AUTH_MODE" in
 "bedrock")
@@ -696,6 +991,22 @@ case "$AUTH_MODE" in
     fi
 
     ;;
+"oat")
+    if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+        echo "error: CLAUDE_CODE_OAUTH_TOKEN not set. Required for --oat mode."
+        echo "Generate token with: claude setup-token"
+        exit 1
+    fi
+
+    echo "$(yellow '[EXPERIMENTAL]') OAuth token mode only works with -p flag (non-interactive)"
+    unset ANTHROPIC_API_KEY
+    unset CLAUDE_CODE_USE_BEDROCK
+    unset CLAUDE_CODE_USE_VERTEX
+
+    DOCKER_ARGS+=("-e" "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
+    [ -n "$ANTHROPIC_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$ANTHROPIC_MODEL")
+    [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL")
+    ;;
 *)
     unset ANTHROPIC_API_KEY
     unset CLAUDE_CODE_USE_BEDROCK
@@ -729,17 +1040,21 @@ if [ -n "$CONFIG_DIR" ]; then
     done
     DOCKER_ARGS+=("-e" "CLAUDE_CONFIG_BASE=$CONFIG_DIR")
 else
-    # Default config location - only mount Claude-specific files for ALL auth modes
+    # Default config location - mount Claude auth files only for OAuth mode
     CLAUDE_CONFIG_BASE="$HOME"
-    if [ -d "$HOME/.claude" ]; then
-        DOCKER_ARGS+=("-v" "$HOME/.claude:/home/claude/.claude")
-    fi
-    if [ -f "$HOME/.claude.json" ]; then
-        DOCKER_ARGS+=("-v" "$HOME/.claude.json:/home/claude/.claude.json")
-    fi
-
-    if [ "$AUTH_MODE" = "claude" ] && [ ! -d "$HOME/.claude" ]; then
-        echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
+    
+    # Mount auth files for OAuth modes (claude and oat need context files)
+    if [ "$AUTH_MODE" = "claude" ] || [ "$AUTH_MODE" = "oat" ]; then
+        if [ -d "$HOME/.claude" ]; then
+            DOCKER_ARGS+=("-v" "$HOME/.claude:/home/claude/.claude")
+        fi
+        if [ -f "$HOME/.claude.json" ]; then
+            DOCKER_ARGS+=("-v" "$HOME/.claude.json:/home/claude/.claude.json")
+        fi
+        
+        if [ "$AUTH_MODE" = "claude" ] && [ ! -d "$HOME/.claude" ]; then
+            echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
+        fi
     fi
 fi
 
@@ -748,6 +1063,7 @@ case "$AUTH_MODE" in
 "api-key") AUTH_STATUS="$(yellow 'API-KEY')" ;;
 "bedrock") AUTH_STATUS="$(yellow 'BEDROCK')" ;;
 "vertex") AUTH_STATUS="$(yellow 'VERTEX')" ;;
+"oat") AUTH_STATUS="$(yellow 'OAT')" ;;
 *) AUTH_STATUS="$(green 'OAuth')" ;;
 esac
 
@@ -756,7 +1072,18 @@ HEADER_LINE="$(green ">>> Claude Code YOLO v$VERSION") | $AUTH_STATUS"
 
 echo ""
 echo "$HEADER_LINE"
+
+# Show Claude version with Docker info - will be detected at runtime
+echo "Claude: $(blue "Containerized") $(green '[Docker]')"
 echo "Work: $(blue "$CURRENT_DIR")"
+
+# Show config loaded information
+if [ ${#loaded_configs[@]} -gt 0 ] && [ "$QUIET" != true ]; then
+    echo "Config: $(green "Loaded ${#loaded_configs[@]} config file(s)")"
+    for conf in "${loaded_configs[@]}"; do
+        echo "        $(blue "$conf")"
+    done
+fi
 
 echo "Vols: $(blue "${CURRENT_DIR}:${CURRENT_DIR}") $(green '[workspace]')"
 
@@ -772,8 +1099,14 @@ if [ -n "$CONFIG_DIR" ]; then
         fi
     done
 else
-    [ -d "$HOME/.claude" ] && echo "      $(blue "$HOME/.claude:/home/claude/.claude") $(green '[auth]')"
-    [ -f "$HOME/.claude.json" ] && echo "      $(blue "$HOME/.claude.json:/home/claude/.claude.json") $(green '[auth]')"
+    # Show auth file mounts for OAuth modes
+    if [ "$AUTH_MODE" = "claude" ] || [ "$AUTH_MODE" = "oat" ]; then
+        [ -d "$HOME/.claude" ] && echo "      $(blue "$HOME/.claude:/home/claude/.claude") $(green '[context]')"
+        [ -f "$HOME/.claude.json" ] && echo "      $(blue "$HOME/.claude.json:/home/claude/.claude.json") $(green '[context]')"
+        if [ "$AUTH_MODE" = "oat" ]; then
+            echo "      $(yellow 'Using CLAUDE_CODE_OAUTH_TOKEN for auth') $(green '[oat]')"
+        fi
+    fi
 fi
 
 case "$AUTH_MODE" in
@@ -792,7 +1125,22 @@ esac
 if [ ${#EXTRA_VOLUMES[@]} -gt 0 ]; then
     for volume in "${EXTRA_VOLUMES[@]}"; do
         if [ "$volume" != "-v" ]; then
-            echo "      $(blue "$volume") $(yellow '[user]')"
+            # Determine volume type based on mount path
+            volume_type="[user]"
+            if [[ "$volume" == *"/.ssh:"* ]]; then
+                volume_type="[ssh]"
+            elif [[ "$volume" == *"/.gitconfig:"* ]] || [[ "$volume" == *"/.config/git:"* ]]; then
+                volume_type="[git]"
+            elif [[ "$volume" == *"/tools:"* ]] || [[ "$volume" == *"/scripts:"* ]]; then
+                volume_type="[tools]"
+            elif [[ "$volume" == *"/docs:"* ]] || [[ "$volume" == *"/references:"* ]]; then
+                volume_type="[docs]"
+            elif [[ "$volume" == *"/.cache/"* ]] || [[ "$volume" == *"/.npm:"* ]] || [[ "$volume" == *"/.cargo:"* ]]; then
+                volume_type="[cache]"
+            elif [[ "$volume" == *":ro"* ]]; then
+                volume_type="[readonly]"
+            fi
+            echo "      $(blue "$volume") $(yellow "$volume_type")"
         fi
     done
 fi

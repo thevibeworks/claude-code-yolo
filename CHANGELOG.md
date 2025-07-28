@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2025-07-21
+
+### Changed
+- Updated Claude Code base version to 1.0.54 with latest features:
+  - Hooks: UserPromptSubmit hook, PreCompact hook
+  - Custom slash commands: argument-hint frontmatter, restored namespacing
+  - Shell: In-memory snapshots for better file operation reliability
+  - Search (Grep) tool redesigned with enhanced parameters
+  - MCP: server instructions support, enhanced tool result display
+  - @-mention file truncation increased from 100 to 2000 lines
+  - New /export command for conversation sharing
+  - /doctor command for settings file validation
+  - Progress messages for Bash tool based on command output
+  - --append-system-prompt now works in interactive mode
+  - Vim mode navigation improvements (c, f/F, t/T commands)
+  - Fixed config file corruption with atomic writes
+
 ## [0.4.2] - 2025-07-10
 
 ### Changed
