@@ -106,6 +106,10 @@ parse_args() {
             claude_args+=("--config" "$2")
             shift 2
             ;;
+        --host-net)
+            claude_args+=("--host-net")
+            shift
+            ;;
         --help | -h)
             echo "Claude YOLO - Container Shortcuts"
             echo ""
@@ -128,6 +132,9 @@ parse_args() {
             echo "  -e VAR        Pass environment variable from shell"
             echo "                Can be used multiple times"
             echo ""
+            echo "Network Options:"
+            echo "  --host-net    Enable full host network access (access internal hosts)"
+            echo ""
             echo "Examples:"
             echo "  claude-yolo                                          # Run Claude in YOLO mode"
             echo "  CCYOLO_DOCKER_IMAGE=custom-image claude-yolo        # Use custom image"
@@ -139,6 +146,7 @@ parse_args() {
             echo "  claude-yolo --config ~/work-claude                  # Custom config home"
             echo "  claude-yolo -e NODE_ENV=dev -e DEBUG                # Set env vars"
             echo "  export API_KEY=xyz; claude-yolo -e API_KEY          # Pass from shell"
+            echo "  claude-yolo --host-net                               # Access internal hosts (10.x.x.x etc)"
             exit 0
             ;;
         *)

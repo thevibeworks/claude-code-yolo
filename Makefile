@@ -2,7 +2,7 @@
 IMAGE_NAME := ghcr.io/thevibeworks/ccyolo
 TAG := latest
 CONTAINER_NAME := ccyolo-$(shell basename $(PWD))-$(shell date +%s)
-CLAUDE_CODE_VERSION := 1.0.58
+CLAUDE_CODE_VERSION := 1.0.60
 
 export DOCKER_BUILDKIT := 1
 
@@ -130,29 +130,17 @@ lint:
 version-check:
 	@./scripts/version-check.sh
 
-.PHONY: release
-release:
-	@if [ -z "$(TYPE)" ]; then \
-		echo "Usage: make release TYPE=patch|minor|major"; \
-		echo "Examples:"; \
-		echo "  make release TYPE=patch  # 0.2.6 -> 0.2.7"; \
-		echo "  make release TYPE=minor  # 0.2.7 -> 0.3.0"; \
-		echo "  make release TYPE=major  # 0.3.0 -> 1.0.0"; \
-		exit 1; \
-	fi
-	@./scripts/release.sh $(TYPE)
-
 .PHONY: release-patch
 release-patch:
-	@./scripts/release.sh patch
+	@./claude-yolo "Execute release workflow from @workflows/RELEASE.md for a **patch** release"
 
 .PHONY: release-minor
 release-minor:
-	@./scripts/release.sh minor
+	@./claude-yolo "Execute release workflow from @workflows/RELEASE.md for a **minor** release"
 
 .PHONY: release-major
 release-major:
-	@./scripts/release.sh major
+	@./claude-yolo "Execute release workflow from @workflows/RELEASE.md for a **major** release"
 
 .PHONY: help
 help:
@@ -178,6 +166,6 @@ help:
 	@echo "  make CLAUDE_CODE_VERSION=1.0.45 build        # Build with specific Claude version"
 	@echo "  make clean                                    # Clean up Docker artifacts"
 	@echo "  make version-check                            # Check version consistency"
-	@echo "  make release TYPE=patch                       # Create patch release"
+	@echo "  make release-patch                            # Create patch release"
 	@echo "  make release-minor                            # Create minor release"
 	@echo "  make release-major                            # Create major release"

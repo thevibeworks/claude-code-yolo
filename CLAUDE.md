@@ -9,7 +9,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - @workflows/GITHUB-ISSUE.md → issues
    - @workflows/GIT-COMMIT.md  → commits
    - @workflows/GITHUB-PR.md   → pull requests
+   - @workflows/RELEASE.md     → releases
 3. Keep one branch per issue; merging the PR must auto-close its linked issue.
+
+## Release Workflow
+
+For releases, execute the workflow from @workflows/RELEASE.md:
+
+**Steps**:
+1. Check prerequisites (clean working dir, CI passing)
+2. Detect current version from `claude.sh` VERSION variable
+3. Calculate new version using semantic versioning
+4. Generate changelog from git log, grouped by commit prefixes
+5. Update VERSION in `claude.sh`, add entry to `CHANGELOG.md`
+6. Create commit following @workflows/GIT-COMMIT.md conventions
+7. Tag and push automatically
+8. Verify with git log and tag info
 
 
 ## PROJECT STRUCTURE
@@ -36,19 +51,15 @@ claude-code-yolo/
 │   └── workflows/            # GitHub Actions
 │       ├── ci.yml           # Pull request checks
 │       ├── release.yml      # Release automation
-│       ├── claude.yml       # Claude @mention handler
-│       └── claude-code-review.yml  # Automated code review
+│       └── claude.yml       # Claude workflow (unified)
 │
 ├── workflows/                # Development workflows
 │   ├── GIT-COMMIT.md        # Commit guidelines
 │   ├── GITHUB-ISSUE.md      # Issue creation guidelines
 │   ├── GITHUB-PR.md         # PR creation process
+│   └── RELEASE.md           # Release workflow
 │
 └── references/              # Documentation and research
-    ├── chats/               # AI conversation logs
-    ├── claude-code/         # Official Claude Code repo reference
-    ├── claude-code-docs/    # Official documentation
-    └── code-reviews/        # AI code review examples
 ```
 
 ## PROJECT PURPOSE

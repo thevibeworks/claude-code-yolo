@@ -32,12 +32,14 @@ show_help() {
     echo "Authentication Options:"
     echo "  --auth-with METHOD          Set authentication method:"
     echo "                              claude    - Claude app authentication (OAuth) [default]"
+    echo "                              oat       - Claude OAuth token (CLAUDE_CODE_OAUTH_TOKEN) [EXPERIMENTAL]"
     echo "                              api-key   - Anthropic API key"
     echo "                              bedrock   - AWS Bedrock"
     echo "                              vertex    - Google Vertex AI"
     echo ""
     echo "  Auth flags (shortcuts):"
     echo "  --claude                    Use Claude app authentication"
+    echo "  --oat, -t                   Use Claude OAuth token [EXPERIMENTAL]"
     echo "  --api-key, -a               Use Anthropic API key"
     echo "  --bedrock, -b               Use AWS Bedrock"
     echo "  --vertex                    Use Google Vertex AI"
@@ -68,6 +70,7 @@ show_help() {
     echo "  AWS_PROFILE_ID              AWS account ID (required for bedrock)"
     echo "  AWS_REGION                  AWS region (default: $DEFAULT_AWS_REGION)"
     echo "  ANTHROPIC_API_KEY           Anthropic API key (required for api-key)"
+    echo "  CLAUDE_CODE_OAUTH_TOKEN     Claude OAuth token (required for oat) [EXPERIMENTAL]"
     echo "  HTTP_PROXY                  HTTP proxy"
     echo "  HTTPS_PROXY                 HTTPS proxy"
     echo "  CCYOLO_DOCKER               Set to 'true' to always use Docker mode"
@@ -86,10 +89,12 @@ show_help() {
     echo ""
     echo "Examples:"
     echo "  $0                                            # Claude app auth (default)"
+    echo "  $0 --auth-with oat -p 'prompt'                # Use OAuth token (non-interactive)"
     echo "  $0 --auth-with api-key                        # Use API key"
     echo "  $0 --auth-with bedrock                        # Use AWS Bedrock"
     echo "  $0 --auth-with vertex                         # Use Google Vertex AI"
     echo "  $0 --yolo                                     # YOLO mode with default auth"
+    echo "  $0 --yolo --auth-with oat -p 'prompt'         # YOLO mode with OAuth token (non-interactive)"
     echo "  $0 --yolo --auth-with bedrock                 # YOLO mode with Bedrock"
     echo "  $0 --yolo -v ~/.ssh:/home/claude/.ssh:ro      # YOLO mode with volume mount"
     echo "  $0 --yolo -e NODE_ENV=dev -e DEBUG            # YOLO mode with env vars"
@@ -97,6 +102,7 @@ show_help() {
     echo "  $0 --no-config --yolo                         # YOLO mode ignoring project config"
     echo "  export DEBUG=myapp:*; $0 --yolo -e DEBUG      # Pass env var from shell"
     echo "  ANTHROPIC_MODEL=opus-4 $0                     # Use Opus 4 with default auth"
+    echo "  CLAUDE_CODE_OAUTH_TOKEN=xxx $0 --oat -p 'prompt' # Use OAuth token (non-interactive)"
     echo "  GH_TOKEN=ghp_xxx $0 --yolo                    # YOLO mode with GitHub CLI auth"
     echo ""
     echo "Config file example (.claude-yolo):"
@@ -150,6 +156,7 @@ OPEN_SHELL=false
 AUTH_MODE="claude"
 EXTRA_VOLUMES=()
 EXTRA_ENV_VARS=()
+EXTRA_DOCKER_ARGS=()
 CONFIG_DIR=""
 SKIP_CONFIG=false
 QUIET=false
@@ -324,6 +331,11 @@ load_config_file() {
                     CLAUDE_ARGS=("${CLAUDE_ARGS[@]/--continue/}")
                 fi
                 ;;
+            "HOST_NET")
+                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
+                    EXTRA_DOCKER_ARGS+=("--net" "host")
+                fi
+                ;;
             # Pass through other environment variables
             *)
                 if [[ "$var_name" =~ ^(DISABLE_|MAX_|ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_) ]]; then
@@ -400,13 +412,13 @@ while [ $i -lt ${#args[@]} ]; do
         if [ $((i + 1)) -lt ${#args[@]} ]; then
             next_arg="${args[$((i + 1))]}"
             case "$next_arg" in
-            claude | api-key | bedrock | vertex)
+            claude | oat | api-key | bedrock | vertex)
                 AUTH_MODE="$next_arg"
                 i=$((i + 2))
                 ;;
             *)
                 echo "error: Invalid auth method: $next_arg" >&2
-                echo "Valid methods: claude, api-key, bedrock, vertex" >&2
+                echo "Valid methods: claude, oat, api-key, bedrock, vertex" >&2
                 exit 1
                 ;;
             esac
@@ -417,6 +429,10 @@ while [ $i -lt ${#args[@]} ]; do
         ;;
     --claude)
         AUTH_MODE="claude"
+        i=$((i + 1))
+        ;;
+    --oat | -t)
+        AUTH_MODE="oat"
         i=$((i + 1))
         ;;
     --api-key | -a)
@@ -483,6 +499,11 @@ while [ $i -lt ${#args[@]} ]; do
     --shell)
         OPEN_SHELL=true
         USE_DOCKER=true
+        i=$((i + 1))
+        ;;
+    --host-net)
+        # Enable host network mode for Docker
+        EXTRA_DOCKER_ARGS+=("--net" "host")
         i=$((i + 1))
         ;;
     *)
@@ -573,6 +594,19 @@ run_claude_local() {
 
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
         ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
+        ;;
+    "oat")
+        AUTH_STATUS="$(yellow 'OAT')"
+        if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "error: CLAUDE_CODE_OAUTH_TOKEN not set. Required for --oat mode."
+            echo "Generate token with: claude setup-token"
+            exit 1
+        fi
+        echo "$(yellow '[EXPERIMENTAL]') OAuth token mode only works with -p flag (non-interactive)"
+        export CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"
+        unset ANTHROPIC_API_KEY
+        unset CLAUDE_CODE_USE_BEDROCK
+        unset CLAUDE_CODE_USE_VERTEX
         ;;
     *)
         AUTH_STATUS="$(green 'OAuth')"
@@ -775,6 +809,13 @@ if [ ${#EXTRA_ENV_VARS[@]} -gt 0 ]; then
     done
 fi
 
+# Pass extra Docker arguments specified with --net, --add-host, etc.
+if [ ${#EXTRA_DOCKER_ARGS[@]} -gt 0 ]; then
+    for docker_arg in "${EXTRA_DOCKER_ARGS[@]}"; do
+        DOCKER_ARGS+=("$docker_arg")
+    done
+fi
+
 # Pass proxy environment variables, translating localhost/127.0.0.1 to host.docker.internal
 if [ -n "$HTTP_PROXY" ]; then
     HTTP_PROXY_DOCKER=$(echo "$HTTP_PROXY" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
@@ -950,6 +991,22 @@ case "$AUTH_MODE" in
     fi
 
     ;;
+"oat")
+    if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+        echo "error: CLAUDE_CODE_OAUTH_TOKEN not set. Required for --oat mode."
+        echo "Generate token with: claude setup-token"
+        exit 1
+    fi
+
+    echo "$(yellow '[EXPERIMENTAL]') OAuth token mode only works with -p flag (non-interactive)"
+    unset ANTHROPIC_API_KEY
+    unset CLAUDE_CODE_USE_BEDROCK
+    unset CLAUDE_CODE_USE_VERTEX
+
+    DOCKER_ARGS+=("-e" "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
+    [ -n "$ANTHROPIC_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$ANTHROPIC_MODEL")
+    [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL")
+    ;;
 *)
     unset ANTHROPIC_API_KEY
     unset CLAUDE_CODE_USE_BEDROCK
@@ -983,17 +1040,21 @@ if [ -n "$CONFIG_DIR" ]; then
     done
     DOCKER_ARGS+=("-e" "CLAUDE_CONFIG_BASE=$CONFIG_DIR")
 else
-    # Default config location - only mount Claude-specific files for ALL auth modes
+    # Default config location - mount Claude auth files only for OAuth mode
     CLAUDE_CONFIG_BASE="$HOME"
-    if [ -d "$HOME/.claude" ]; then
-        DOCKER_ARGS+=("-v" "$HOME/.claude:/home/claude/.claude")
-    fi
-    if [ -f "$HOME/.claude.json" ]; then
-        DOCKER_ARGS+=("-v" "$HOME/.claude.json:/home/claude/.claude.json")
-    fi
-
-    if [ "$AUTH_MODE" = "claude" ] && [ ! -d "$HOME/.claude" ]; then
-        echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
+    
+    # Mount auth files for OAuth modes (claude and oat need context files)
+    if [ "$AUTH_MODE" = "claude" ] || [ "$AUTH_MODE" = "oat" ]; then
+        if [ -d "$HOME/.claude" ]; then
+            DOCKER_ARGS+=("-v" "$HOME/.claude:/home/claude/.claude")
+        fi
+        if [ -f "$HOME/.claude.json" ]; then
+            DOCKER_ARGS+=("-v" "$HOME/.claude.json:/home/claude/.claude.json")
+        fi
+        
+        if [ "$AUTH_MODE" = "claude" ] && [ ! -d "$HOME/.claude" ]; then
+            echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
+        fi
     fi
 fi
 
@@ -1002,6 +1063,7 @@ case "$AUTH_MODE" in
 "api-key") AUTH_STATUS="$(yellow 'API-KEY')" ;;
 "bedrock") AUTH_STATUS="$(yellow 'BEDROCK')" ;;
 "vertex") AUTH_STATUS="$(yellow 'VERTEX')" ;;
+"oat") AUTH_STATUS="$(yellow 'OAT')" ;;
 *) AUTH_STATUS="$(green 'OAuth')" ;;
 esac
 
@@ -1037,8 +1099,14 @@ if [ -n "$CONFIG_DIR" ]; then
         fi
     done
 else
-    [ -d "$HOME/.claude" ] && echo "      $(blue "$HOME/.claude:/home/claude/.claude") $(green '[auth]')"
-    [ -f "$HOME/.claude.json" ] && echo "      $(blue "$HOME/.claude.json:/home/claude/.claude.json") $(green '[auth]')"
+    # Show auth file mounts for OAuth modes
+    if [ "$AUTH_MODE" = "claude" ] || [ "$AUTH_MODE" = "oat" ]; then
+        [ -d "$HOME/.claude" ] && echo "      $(blue "$HOME/.claude:/home/claude/.claude") $(green '[context]')"
+        [ -f "$HOME/.claude.json" ] && echo "      $(blue "$HOME/.claude.json:/home/claude/.claude.json") $(green '[context]')"
+        if [ "$AUTH_MODE" = "oat" ]; then
+            echo "      $(yellow 'Using CLAUDE_CODE_OAUTH_TOKEN for auth') $(green '[oat]')"
+        fi
+    fi
 fi
 
 case "$AUTH_MODE" in

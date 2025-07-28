@@ -54,6 +54,7 @@ claude-yolo                         # Run in current directory
 # Using claude.sh for more control
 claude.sh --yolo                    # YOLO mode
 claude.sh                           # Local mode (no Docker)
+claude.sh --auth-with oat -p "prompt" # Use OAuth token (experimental, non-interactive)
 claude.sh --auth-with api-key       # Use API key(may have to rerun `/login`)
 claude.sh --auth-with bedrock       # Use AWS Bedrock
 claude.sh --auth-with vertex        # Use Google Vertex AI
@@ -65,6 +66,9 @@ claude.sh --help                    # Show all options
 
 - **Claude App** (default): Uses `~/.claude` OAuth - `--auth-with claude`
   - Run `/login` in claude-code, open the oauth link, then paste the code back in the terminal
+- **OAuth Token**: Uses `CLAUDE_CODE_OAUTH_TOKEN` environment variable - `--auth-with oat` **[EXPERIMENTAL]**
+  - Generate with `claude setup-token`, requires context files for Claude history
+  - **Limitation**: Only works with `-p` flag (non-interactive mode)
 - **API Key**: Set `ANTHROPIC_API_KEY` environment variable - `--auth-with api-key`
   - If OAuth exists, use `/login` in Claude to switch to API key auth
 - **AWS Bedrock**: Uses `~/.aws` credentials - `--auth-with bedrock`
@@ -82,6 +86,32 @@ claude-yolo --config ~/work-claude
 This is useful for:
 - Separate auth sessions for different projects
 - Isolating Claude configurations
+
+### OAuth Token Setup **[EXPERIMENTAL]**
+
+For token-based authentication (with limitations):
+
+```bash
+# Generate OAuth token (run locally)
+claude setup-token
+
+# Set token and use (NON-INTERACTIVE ONLY)
+export CLAUDE_CODE_OAUTH_TOKEN="your_token_here"
+claude.sh --oat -p "your prompt"            # Local mode with token
+claude.sh --yolo --oat -p "your prompt"     # YOLO mode with token
+
+# Or inline
+CLAUDE_CODE_OAUTH_TOKEN="your_token" claude.sh --oat -p "your prompt"
+```
+
+**Current Limitations**:
+- Only works with `-p` flag (non-interactive mode)
+- Interactive mode not supported (claude CLI limitation)
+
+**Use Cases**:
+- CI/CD automation with specific prompts
+- Scripted Claude interactions
+- Non-interactive batch processing
 
 ## GitHub CLI Authentication
 
