@@ -71,6 +71,7 @@ show_help() {
     echo "  CLAUDE_CODE_MAX_OUTPUT_TOKENS  Maximum output tokens limit"
     echo "  CLAUDE_CODE_USE_VERTEX      Use Google Vertex AI"
     echo "  DISABLE_TELEMETRY           Disable Claude Code telemetry"
+    echo "  IS_SANDBOX                  Set to 'true' in Docker mode (indicates sandboxed environment)"
     echo "  CCYOLO_DOCKER_SOCKET        Mount Docker socket (default: false, set to 'true' to enable)"
     echo "  CCYOLO_EXTRA_VOLUMES        Extra volumes to mount in the container"
     echo "  GH_TOKEN                    GitHub CLI authentication token"
@@ -584,6 +585,8 @@ fi
 [ -n "$CLAUDE_CODE_USE_VERTEX" ] && DOCKER_ARGS+=("-e" "CLAUDE_CODE_USE_VERTEX=$CLAUDE_CODE_USE_VERTEX")
 [ -n "$DISABLE_TELEMETRY" ] && DOCKER_ARGS+=("-e" "DISABLE_TELEMETRY=$DISABLE_TELEMETRY")
 [ "$VERBOSE" = true ] && DOCKER_ARGS+=("-e" "VERBOSE=true")
+# Set IS_SANDBOX=true in Docker mode to indicate sandboxed environment
+DOCKER_ARGS+=("-e" "IS_SANDBOX=true")
 
 # Always run as non-root claude user for security and file ownership
 # Default to host user UID/GID for seamless file access
