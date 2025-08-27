@@ -39,6 +39,8 @@ Claude Code YOLO solves the permission friction of Claude CLI by running it insi
 4. **Non-root Execution**: Runs as a non-root user inside container with UID/GID mapping
 5. **Safety Checks**: Warns before running in dangerous directories like `$HOME`
 
+**Container Info**: Claude runs as `claude` user in `/home/claude/` (not root). Mount configs to `/home/claude/` paths.
+
 This gives you full Claude Code power without compromising your system security.
 
 ## Usage
@@ -143,12 +145,12 @@ Claude YOLO supports configuration files to persist your volume mounts, environm
 
 Example `.claude-yolo` file:
 ```bash
-# Git integration
+# Git integration - mount to claude user's home
 VOLUME=~/.ssh:/home/claude/.ssh:ro
 VOLUME=~/.gitconfig:/home/claude/.gitconfig:ro
 
-# Environment settings
-ENV=NODE_ENV=development
+# Environment settings with expansion support
+ENV=NODE_ENV=${NODE_ENV:-development}
 ENV=DEBUG=myapp:*
 
 # Pass through host env (either form works)
@@ -162,29 +164,37 @@ USE_TRACE=true
 
 See `.claude-yolo.example` and `.claude-yolo.full` for more examples.
 
+### Security Features
+
+Configuration files include security protections:
+- **Path Traversal Prevention**: Blocks dangerous paths like `../../`
+- **Command Injection Protection**: Only allows safe variable expansion
+- **Sensitive Value Masking**: API keys, tokens, and secrets are masked in output (e.g., `API_KEY=sk-a***key`)
+- **Input Validation**: Environment variable names and values are validated
+
 ## Custom Volume Mounting
 
 You can mount additional configuration files or directories using the `-v` flag:
 
 ```bash
-# Mount Git configuration
-claude-yolo -v ~/.gitconfig:/root/.gitconfig
+# Mount Git configuration to claude user's home
+claude-yolo -v ~/.gitconfig:/home/claude/.gitconfig:ro
 
 # Mount SSH keys (read-only)
-claude-yolo -v ~/.ssh:/root/.ssh:ro
+claude-yolo -v ~/.ssh:/home/claude/.ssh:ro
 
 # Resume with SSH keys and tracing enabled
-claude-yolo -v ~/.ssh:/root/.ssh:ro --trace  --continue
+claude-yolo -v ~/.ssh:/home/claude/.ssh:ro --trace --continue
 
 # Multiple mounts
 claude-yolo -v ~/tools:/tools -v ~/data:/data
 
-# Mount custom tool configs
-claude-yolo -v ~/.config/gh:/root/.config/gh
-claude-yolo -v ~/.terraform.d:/root/.terraform.d
+# Mount custom tool configs to claude user paths
+claude-yolo -v ~/.config/gh:/home/claude/.config/gh:ro
+claude-yolo -v ~/.terraform.d:/home/claude/.terraform.d:ro
 ```
 
-**Note**: Volumes mounted to `/root/*` are automatically symlinked to `/home/claude/*` for non-root user access.
+**Note**: Mount personal configs to `/home/claude/` paths since Claude Code runs as the `claude` user, not root.
 
 ## Key Features
 
@@ -192,6 +202,8 @@ claude-yolo -v ~/.terraform.d:/root/.terraform.d
 - **Proxy Support**: Automatic `localhost` → `host.docker.internal` translation
 - **Model Selection**: Use any Claude model via `ANTHROPIC_MODEL` env var
 - **Request Tracing**: Debug with `--trace` flag using claude-trace
+- **Security-First**: Sensitive environment variable masking and path validation
+- **Environment Expansion**: Support for `${VAR:-default}` syntax in config files
 - **Docker Socket**: Optional mounting with `CCYOLO_DOCKER_SOCKET=true`
 
 
@@ -231,7 +243,7 @@ make build
 ### Custom Claude Version
 
 ```bash
-make CLAUDE_CODE_VERSION=1.0.45 build  # Specific version
+make CLAUDE_CODE_VERSION=1.0.93 build  # Specific version
 make CLAUDE_CODE_VERSION=latest build  # Latest version
 ```
 

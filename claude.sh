@@ -217,6 +217,7 @@ CONFIG_DIR=""
 SKIP_CONFIG=false
 QUIET=false
 DOCKER_ONLY_WARNINGS=()
+CONFIG_ERRORS=()
 
 green() { echo -e "\033[32m$1\033[0m"; }
 yellow() { echo -e "\033[33m$1\033[0m"; }
@@ -355,13 +356,11 @@ validate_config_value() {
 
 process_volume_config() {
     local value="$1"
-    local errors_var="$2"
-    declare -n errors_ref="$errors_var"
-
+    
     value="${value//\"/}"
 
     if ! validate_config_value "VOLUME" "$value"; then
-        errors_ref+=("Invalid volume: $value")
+        CONFIG_ERRORS+=("Invalid volume: $value")
         return 1
     fi
 
@@ -373,19 +372,17 @@ process_volume_config() {
         EXTRA_VOLUMES+=("-v" "$value")
         DOCKER_ONLY_WARNINGS+=("Config volume mount: $value (ignored in local mode)")
     else
-        errors_ref+=("Volume validation failed: $value")
+        CONFIG_ERRORS+=("Volume validation failed: $value")
     fi
 }
 
 process_env_config() {
     local value="$1"
-    local errors_var="$2"
-    declare -n errors_ref="$errors_var"
-
+    
     value="${value//\"/}"
 
     if ! validate_config_value "ENV" "$value"; then
-        errors_ref+=("Invalid env: $value")
+        CONFIG_ERRORS+=("Invalid env: $value")
         return 1
     fi
 
@@ -396,7 +393,8 @@ process_env_config() {
             EXTRA_ENV_VARS+=("-e" "$name=$val")
             DOCKER_ONLY_WARNINGS+=("Config environment variable: $name=$val (ignored in local mode)")
         else
-            errors_ref+=("Invalid env name: $name")
+            CONFIG_ERRORS+=("Invalid env name: $name")
+        fi
     else
         # Shorthand pass-through: ENV=${VAR} or ENV=$VAR
         if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]] || [[ "$value" =~ ^\$([A-Za-z_][A-Za-z0-9_]*)$ ]]; then
@@ -417,18 +415,15 @@ process_env_config() {
 process_var_config() {
     local name="$1"
     local value="$2"
-    local errors_var="$3"
-    declare -n errors_ref="$errors_var"
-
     if ! [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
-        errors_ref+=("Invalid variable name: $name")
+        CONFIG_ERRORS+=("Invalid variable name: $name")
         return 1
     fi
 
     value="${value//\"/}"
 
     if ! validate_config_value "$name" "$value"; then
-        errors_ref+=("Validation failed for $name=$value")
+        CONFIG_ERRORS+=("Validation failed for $name=$value")
         return 1
     fi
 
@@ -441,14 +436,14 @@ process_var_config() {
         CONFIG_DIR="$value"
         if [ ! -d "$CONFIG_DIR" ]; then
             mkdir -p "$CONFIG_DIR" 2>/dev/null || {
-                errors_ref+=("Cannot create CONFIG_DIR: $CONFIG_DIR")
+                CONFIG_ERRORS+=("Cannot create CONFIG_DIR: $CONFIG_DIR")
                 CONFIG_DIR=""
                 return 1
             }
         fi
         if [ -n "$CONFIG_DIR" ] && [ ! -f "$CONFIG_DIR/.claude.json" ]; then
             echo '{}' >"$CONFIG_DIR/.claude.json" 2>/dev/null || {
-                errors_ref+=("Cannot create $CONFIG_DIR/.claude.json")
+                CONFIG_ERRORS+=("Cannot create $CONFIG_DIR/.claude.json")
             }
         fi
         ;;
@@ -481,7 +476,7 @@ process_var_config() {
         if [[ "$name" =~ ^(DISABLE_|MAX_|ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_) ]]; then
             export "$name"="$value"
         else
-            errors_ref+=("Unknown config variable: $name")
+            CONFIG_ERRORS+=("Unknown config variable: $name")
         fi
         ;;
     esac
@@ -496,25 +491,28 @@ load_config_file() {
     # we would need to read the file once into memory and process from there.
     # However, given the nature of config files (user-controlled, local),
     # the security impact is minimal and the current approach is pragmatic.
-    local errors=()
+    local initial_error_count=${#CONFIG_ERRORS[@]}
 
     while IFS= read -r line || [ -n "$line" ]; do
         [[ "$line" =~ ^[[:space:]]*#|^[[:space:]]*$ ]] && continue
 
         if [[ "$line" =~ ^[[:space:]]*VOLUME[[:space:]]*=[[:space:]]*(.+)$ ]]; then
-            process_volume_config "${BASH_REMATCH[1]}" errors
+            process_volume_config "${BASH_REMATCH[1]}"
         elif [[ "$line" =~ ^[[:space:]]*ENV[[:space:]]*=[[:space:]]*(.+)$ ]]; then
-            process_env_config "${BASH_REMATCH[1]}" errors
+            process_env_config "${BASH_REMATCH[1]}"
         elif [[ "$line" =~ ^[[:space:]]*([A-Z_]+)[[:space:]]*=[[:space:]]*(.+)$ ]]; then
-            process_var_config "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" errors
+            process_var_config "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
         else
-            errors+=("Invalid line format: $line")
+            CONFIG_ERRORS+=("Invalid line format: $line")
         fi
     done <"$config_file"
 
-    if [ ${#errors[@]} -gt 0 ]; then
-        echo "ERROR: Config file $config_file has ${#errors[@]} error(s):" >&2
-        printf '%s\n' "${errors[@]}" >&2
+    # Check if new errors were added during this file's processing
+    if [ ${#CONFIG_ERRORS[@]} -gt "$initial_error_count" ]; then
+        echo "ERROR: Config file $config_file has $((${#CONFIG_ERRORS[@]} - initial_error_count)) error(s):" >&2
+        for ((i=initial_error_count; i<${#CONFIG_ERRORS[@]}; i++)); do
+            echo "  ${CONFIG_ERRORS[$i]}" >&2
+        done
         exit 1
     fi
 }
@@ -839,6 +837,9 @@ run_claude_local() {
     blue '────────────────────────────────────'
     echo ""
 
+    # Suppress Node.js experimental proxy warnings from Claude Code CLI
+    export NODE_NO_WARNINGS=1
+
     if [ "$USE_TRACE" = true ]; then
         if command -v "$CLAUDE_TRACE_PATH" >/dev/null 2>&1; then
             CLAUDE_CMD="$CLAUDE_TRACE_PATH"
@@ -967,6 +968,9 @@ if [ ${#EXTRA_VOLUMES[@]} -gt 0 ]; then
     CCYOLO_EXTRA_VOLUMES="${EXTRA_VOLUMES[*]}"
     DOCKER_ARGS+=("-e" "CCYOLO_EXTRA_VOLUMES=$CCYOLO_EXTRA_VOLUMES")
 fi
+
+# Suppress Node.js experimental proxy warnings from Claude Code CLI
+DOCKER_ARGS+=("-e" "NODE_NO_WARNINGS=1")
 
 # Pass extra environment variables specified with -e
 if [ ${#EXTRA_ENV_VARS[@]} -gt 0 ]; then
