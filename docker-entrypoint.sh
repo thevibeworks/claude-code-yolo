@@ -68,8 +68,11 @@ show_environment_info() {
             echo "Model: $ANTHROPIC_MODEL"
         fi
 
-        if [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
-            echo "Proxy configured"
+        if [ -n "$grpc_proxy" ] || [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
+            echo "Proxy configured:"
+            [ -n "$grpc_proxy" ] && echo "  gRPC: $grpc_proxy"
+            [ -n "$HTTPS_PROXY" ] && echo "  HTTPS: $HTTPS_PROXY"
+            [ -n "$HTTP_PROXY" ] && echo "  HTTP: $HTTP_PROXY"
         fi
 
         echo "Running as: $CLAUDE_USER (UID=$CLAUDE_UID, GID=$CLAUDE_GID)"
