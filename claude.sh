@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.4.2"
+VERSION="0.5.0"
 DOCKER_IMAGE="${CCYOLO_DOCKER_IMAGE:-ghcr.io/thevibeworks/ccyolo}"
 DOCKER_TAG="${CCYOLO_DOCKER_TAG:-latest}"
 
@@ -245,7 +245,7 @@ format_env_display() {
     local var_name="$1"
     local var_value="$2"
     local masked_value
-    
+
     masked_value=$(mask_sensitive_value "$var_name" "$var_value")
     echo "$(blue "$var_name")=${masked_value}"
 }

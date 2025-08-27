@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-08-27
+
+### Added
+- Project-specific config file support (`.claude-yolo` in project root)
+- OAuth token authentication method (`--oat`, experimental)
+- Full configuration reference file (`.claude-yolo.full`)
+- Environment variable expansion support (`${VAR:-default}`)
+- Sensitive environment variable masking (API keys, tokens, secrets)
+- `--host-net` option for Docker networking
+- Configuration display in startup output
+
+### Changed
+- Updated Claude Code base version to 1.0.93
+- Unified model aliasing system across all authentication methods
+- Improved environment and volume parsing
+- Enhanced security with controlled mounts and permissions
+- Simplified example config file
+- Streamlined release workflow through claude-yolo
+
+### Fixed
+- Critical security issues with config file handling
+- Environment variable display formatting
+- Volume mount permissions and validation
+
+### Security
+- Mask sensitive values in environment variable output
+- Enhanced config file validation and security checks
+
 ## [0.4.3] - 2025-07-21
 
 ### Changed
