@@ -144,8 +144,8 @@ RUN npm config set prefix "$CLAUDE_HOME/.npm-global" && \
     npm cache clean --force
 
 # Install Go tools for Atlassian integration (Confluence/Jira/Bitbucket)
-# Build as claude user; move binary as root later (avoid sudo in build)
-RUN go install github.com/lroolle/atlas-cli/cmd/atl@main
+RUN go install github.com/lroolle/atlas-cli/cmd/atl@main && \
+    sudo mv $HOME/go/bin/atl /usr/local/bin/
 
 RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh "$CLAUDE_HOME/.oh-my-zsh" && \
     git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$CLAUDE_HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" && \
@@ -159,9 +159,6 @@ RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > "$CLAUDE_HOME/.zshrc" && \
     echo 'export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/go/bin:/usr/local/go/bin:$PATH' >> "$CLAUDE_HOME/.zshrc"
 
 USER root
-
-# Move atl into PATH as root (after building as claude)
-RUN test -f /home/claude/go/bin/atl && mv /home/claude/go/bin/atl /usr/local/bin/atl || true
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 

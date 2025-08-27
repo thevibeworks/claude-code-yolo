@@ -356,11 +356,12 @@ validate_config_value() {
 process_volume_config() {
     local value="$1"
     local errors_var="$2"
+    declare -n errors_ref="$errors_var"
 
     value="${value//\"/}"
 
     if ! validate_config_value "VOLUME" "$value"; then
-        eval "$errors_var+=(\"Invalid volume: \$value\")"
+        errors_ref+=("Invalid volume: $value")
         return 1
     fi
 
@@ -372,18 +373,19 @@ process_volume_config() {
         EXTRA_VOLUMES+=("-v" "$value")
         DOCKER_ONLY_WARNINGS+=("Config volume mount: $value (ignored in local mode)")
     else
-        eval "$errors_var+=(\"Volume validation failed: \$value\")"
+        errors_ref+=("Volume validation failed: $value")
     fi
 }
 
 process_env_config() {
     local value="$1"
     local errors_var="$2"
+    declare -n errors_ref="$errors_var"
 
     value="${value//\"/}"
 
     if ! validate_config_value "ENV" "$value"; then
-        eval "$errors_var+=(\"Invalid env: \$value\")"
+        errors_ref+=("Invalid env: $value")
         return 1
     fi
 
@@ -394,8 +396,7 @@ process_env_config() {
             EXTRA_ENV_VARS+=("-e" "$name=$val")
             DOCKER_ONLY_WARNINGS+=("Config environment variable: $name=$val (ignored in local mode)")
         else
-            eval "$errors_var+=(\"Invalid env name: \$name\")"
-        fi
+            errors_ref+=("Invalid env name: $name")
     else
         # Shorthand pass-through: ENV=${VAR} or ENV=$VAR
         if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]] || [[ "$value" =~ ^\$([A-Za-z_][A-Za-z0-9_]*)$ ]]; then
@@ -417,16 +418,17 @@ process_var_config() {
     local name="$1"
     local value="$2"
     local errors_var="$3"
+    declare -n errors_ref="$errors_var"
 
     if ! [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
-        eval "$errors_var+=(\"Invalid variable name: \$name\")"
+        errors_ref+=("Invalid variable name: $name")
         return 1
     fi
 
     value="${value//\"/}"
 
     if ! validate_config_value "$name" "$value"; then
-        eval "$errors_var+=(\"Validation failed for \$name=\$value\")"
+        errors_ref+=("Validation failed for $name=$value")
         return 1
     fi
 
@@ -439,14 +441,14 @@ process_var_config() {
         CONFIG_DIR="$value"
         if [ ! -d "$CONFIG_DIR" ]; then
             mkdir -p "$CONFIG_DIR" 2>/dev/null || {
-                eval "$errors_var+=(\"Cannot create CONFIG_DIR: \$CONFIG_DIR\")"
+                errors_ref+=("Cannot create CONFIG_DIR: $CONFIG_DIR")
                 CONFIG_DIR=""
                 return 1
             }
         fi
         if [ -n "$CONFIG_DIR" ] && [ ! -f "$CONFIG_DIR/.claude.json" ]; then
             echo '{}' >"$CONFIG_DIR/.claude.json" 2>/dev/null || {
-                eval "$errors_var+=(\"Cannot create \$CONFIG_DIR/.claude.json\")"
+                errors_ref+=("Cannot create $CONFIG_DIR/.claude.json")
             }
         fi
         ;;
@@ -479,7 +481,7 @@ process_var_config() {
         if [[ "$name" =~ ^(DISABLE_|MAX_|ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_) ]]; then
             export "$name"="$value"
         else
-            eval "$errors_var+=(\"Unknown config variable: \$name\")"
+            errors_ref+=("Unknown config variable: $name")
         fi
         ;;
     esac
@@ -489,6 +491,11 @@ load_config_file() {
     local config_file="$1"
     [ -f "$config_file" ] || return 1
 
+    # Note: There's a potential TOCTOU race condition here where the config file
+    # could be modified between validation and loading. For a fully atomic solution,
+    # we would need to read the file once into memory and process from there.
+    # However, given the nature of config files (user-controlled, local),
+    # the security impact is minimal and the current approach is pragmatic.
     local errors=()
 
     while IFS= read -r line || [ -n "$line" ]; do
