@@ -20,6 +20,7 @@ jobs:
           scandir: "."
           format: gcc
           severity: error
+          ignore_paths: ".github"
 
   test:
     name: Basic Tests
