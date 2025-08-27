@@ -16,9 +16,12 @@ VOLUME=~/.gitconfig:/home/claude/.gitconfig:ro
 ENV=CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
 ENV=DISABLE_TELEMETRY=1
 
-# Mount Extra Voulmes for Claude Code References
+# Mount Extra Volumes for Claude Code References
 # VOLUME=/path/to/some-docs:$(pwd)/references/some-docs:ro
 # VOLUME=/path/to/some-script.sh:/home/claude/.local/bin/some-script.sh:ro
 
 # Environment variables from host
+# Pass through a host env var by name
+# ENV=GH_TOKEN
+# Or Compose-style shorthand pass-through of same name
 # ENV=${GH_TOKEN}

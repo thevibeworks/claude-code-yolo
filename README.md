@@ -59,6 +59,7 @@ claude.sh --auth-with api-key       # Use API key(may have to rerun `/login`)
 claude.sh --auth-with bedrock       # Use AWS Bedrock
 claude.sh --auth-with vertex        # Use Google Vertex AI
 claude.sh --shell                   # Open shell in container
+claude.sh --host-net                # Host networking (Linux only)
 claude.sh --help                    # Show all options
 ```
 
@@ -149,6 +150,10 @@ VOLUME=~/.gitconfig:/home/claude/.gitconfig:ro
 # Environment settings
 ENV=NODE_ENV=development
 ENV=DEBUG=myapp:*
+
+# Pass through host env (either form works)
+ENV=GH_TOKEN
+ENV=${GH_TOKEN}
 
 # Claude settings
 ANTHROPIC_MODEL=sonnet-4

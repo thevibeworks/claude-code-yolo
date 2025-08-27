@@ -397,7 +397,16 @@ process_env_config() {
             eval "$errors_var+=(\"Invalid env name: \$name\")"
         fi
     else
-        if validate_env_name "$value" && [ -n "${!value}" ]; then
+        # Shorthand pass-through: ENV=${VAR} or ENV=$VAR
+        if [[ "$value" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]] || [[ "$value" =~ ^\$([A-Za-z_][A-Za-z0-9_]*)$ ]]; then
+            local short_var_name
+            short_var_name="${BASH_REMATCH[1]}"
+            if [ -n "${!short_var_name}" ]; then
+                EXTRA_ENV_VARS+=("-e" "$short_var_name=${!short_var_name}")
+                DOCKER_ONLY_WARNINGS+=("Config environment variable: $short_var_name=${!short_var_name} (ignored in local mode)")
+            fi
+        elif validate_env_name "$value" && [ -n "${!value}" ]; then
+            # Pass-through by name: ENV=VAR
             EXTRA_ENV_VARS+=("-e" "$value=${!value}")
             DOCKER_ONLY_WARNINGS+=("Config environment variable: $value=${!value} (ignored in local mode)")
         fi
@@ -784,6 +793,16 @@ run_claude_local() {
         ENV_VARS+="   $(format_env_display 'grpc_proxy' "$grpc_proxy")\n"
     elif [ -n "$GRPC_PROXY" ]; then
         ENV_VARS+="   $(format_env_display 'GRPC_PROXY' "$GRPC_PROXY")\n"
+    fi
+    if [ -n "$no_grpc_proxy" ]; then
+        ENV_VARS+="   $(format_env_display 'no_grpc_proxy' "$no_grpc_proxy")\n"
+    elif [ -n "$NO_GRPC_PROXY" ]; then
+        ENV_VARS+="   $(format_env_display 'NO_GRPC_PROXY' "$NO_GRPC_PROXY")\n"
+    fi
+    if [ -n "$no_grpc_proxy" ]; then
+        ENV_VARS+="   $(format_env_display 'no_grpc_proxy' "$no_grpc_proxy")\n"
+    elif [ -n "$NO_GRPC_PROXY" ]; then
+        ENV_VARS+="   $(format_env_display 'NO_GRPC_PROXY' "$NO_GRPC_PROXY")\n"
     fi
     if [ -n "$HTTP_PROXY" ]; then
         ENV_VARS+="   $(format_env_display 'HTTP_PROXY' "$HTTP_PROXY")\n"
@@ -1302,6 +1321,11 @@ if [ -n "$grpc_proxy" ]; then
     ENV_VARS+="   $(format_env_display 'grpc_proxy' "$grpc_proxy")\n"
 elif [ -n "$GRPC_PROXY" ]; then
     ENV_VARS+="   $(format_env_display 'GRPC_PROXY' "$GRPC_PROXY")\n"
+fi
+if [ -n "$no_grpc_proxy" ]; then
+    ENV_VARS+="   $(format_env_display 'no_grpc_proxy' "$no_grpc_proxy")\n"
+elif [ -n "$NO_GRPC_PROXY" ]; then
+    ENV_VARS+="   $(format_env_display 'NO_GRPC_PROXY' "$NO_GRPC_PROXY")\n"
 fi
 if [ -n "$HTTP_PROXY" ]; then
     ENV_VARS+="   $(format_env_display 'HTTP_PROXY' "$HTTP_PROXY")\n"

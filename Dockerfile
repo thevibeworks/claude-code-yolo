@@ -40,6 +40,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 && \
     locale-gen en_US.UTF-8
 
+# Initialize Git LFS so it's usable for all users
+RUN git lfs install --system
+
 # Install language runtimes in parallel-friendly layers
 FROM base AS runtimes
 
@@ -141,8 +144,8 @@ RUN npm config set prefix "$CLAUDE_HOME/.npm-global" && \
     npm cache clean --force
 
 # Install Go tools for Atlassian integration (Confluence/Jira/Bitbucket)
-RUN go install github.com/lroolle/atlas-cli/cmd/atl@main && \
-    sudo mv $HOME/go/bin/atl /usr/local/bin/
+# Build as claude user; move binary as root later (avoid sudo in build)
+RUN go install github.com/lroolle/atlas-cli/cmd/atl@main
 
 RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh "$CLAUDE_HOME/.oh-my-zsh" && \
     git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$CLAUDE_HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" && \
@@ -156,6 +159,9 @@ RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > "$CLAUDE_HOME/.zshrc" && \
     echo 'export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/go/bin:/usr/local/go/bin:$PATH' >> "$CLAUDE_HOME/.zshrc"
 
 USER root
+
+# Move atl into PATH as root (after building as claude)
+RUN test -f /home/claude/go/bin/atl && mv /home/claude/go/bin/atl /usr/local/bin/atl || true
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
