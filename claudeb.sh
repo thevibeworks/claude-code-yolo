@@ -164,6 +164,7 @@ export ANTHROPIC_SMALL_FAST_MODEL="$FAST_MODEL_ARN"
 export CLAUDE_CODE_USE_BEDROCK=1
 export AWS_REGION="$AWS_REGION"
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
+export MAX_THINKING_TOKENS=6144
 
 # Show proxy configuration if set
 if [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then

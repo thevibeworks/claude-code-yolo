@@ -128,6 +128,35 @@ claude-yolo
 
 **Note**: This avoids mounting `~/.config/gh/` which fails due to secure keyring storage in modern GitHub CLI versions.
 
+## Configuration Files
+
+Claude YOLO supports configuration files to persist your volume mounts, environment variables, and settings. Following the XDG Base Directory specification:
+
+```bash
+# Configuration files are loaded in order (later files override earlier):
+1. $XDG_CONFIG_HOME/claude-yolo/.claude-yolo   # Global config (default: ~/.config/claude-yolo/.claude-yolo)
+2. ~/.claude-yolo                        # Legacy global location
+3. .claude-yolo                          # Project-specific config
+4. .claude-yolo.local                    # Local overrides (gitignored)
+```
+
+Example `.claude-yolo` file:
+```bash
+# Git integration
+VOLUME=~/.ssh:/home/claude/.ssh:ro
+VOLUME=~/.gitconfig:/home/claude/.gitconfig:ro
+
+# Environment settings
+ENV=NODE_ENV=development
+ENV=DEBUG=myapp:*
+
+# Claude settings
+ANTHROPIC_MODEL=sonnet-4
+USE_TRACE=true
+```
+
+See `.claude-yolo.example` and `.claude-yolo.full` for more examples.
+
 ## Custom Volume Mounting
 
 You can mount additional configuration files or directories using the `-v` flag:
@@ -198,9 +227,8 @@ make build
 
 ```bash
 make CLAUDE_CODE_VERSION=1.0.45 build  # Specific version
-make CLAUDE_CODE_VERSION=latest build   # Latest version
+make CLAUDE_CODE_VERSION=latest build  # Latest version
 ```
-Default: 1.0.44
 
 ## Inspired by
 

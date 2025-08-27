@@ -26,17 +26,19 @@ find_project_containers() {
 }
 
 inspect_container() {
-    local containers=$(find_project_containers)
+    local containers
+    containers=$(find_project_containers)
     if [ -z "$containers" ]; then
         echo "No running containers found for this project"
         echo "Pattern: $CONTAINER_PATTERN*"
         exit 1
     fi
 
-    local container_array=($containers)
+    local container_array
+    read -ra container_array <<< "$containers"
     local num_containers=${#container_array[@]}
 
-    if [ $num_containers -eq 1 ]; then
+    if [ "$num_containers" -eq 1 ]; then
         local container="${container_array[0]}"
         echo "Entering container $container as claude user..."
         exec docker exec -it "$container" gosu claude /bin/zsh
@@ -45,14 +47,15 @@ inspect_container() {
         echo ""
         for i in "${!container_array[@]}"; do
             local container="${container_array[$i]}"
-            local status=$(docker ps --filter "name=$container" --format "{{.Status}}")
+            local status
+            status=$(docker ps --filter "name=$container" --format "{{.Status}}")
             echo "  $((i + 1))) $container ($status)"
         done
         echo ""
         echo -n "Select container to inspect (1-$num_containers): "
         read -r choice
 
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le $num_containers ]; then
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$num_containers" ]; then
             local selected_container="${container_array[$((choice - 1))]}"
             echo "Entering container $selected_container as claude user..."
             exec docker exec -it "$selected_container" gosu claude /bin/zsh
@@ -70,9 +73,14 @@ list_containers() {
 
 parse_args() {
     local claude_args=()
+    local use_yolo=true
 
     while [ $# -gt 0 ]; do
         case "$1" in
+        --local)
+            use_yolo=false
+            shift
+            ;;
         -v)
             if [ -z "$2" ]; then
                 echo "Error: -v requires an argument" >&2
@@ -115,6 +123,10 @@ parse_args() {
             echo ""
             echo "Usage: claude-yolo [options] [claude-arguments...]"
             echo ""
+            echo "Execution Mode:"
+            echo "  (default)     Run in YOLO mode (containerized with full permissions)"
+            echo "  --local       Run in local mode (bypass container)"
+            echo ""
             echo "Container Inspection:"
             echo "  --inspect     Enter running container as claude user"
             echo "  --ps          List containers for this project"
@@ -136,7 +148,8 @@ parse_args() {
             echo "  --host-net    Enable full host network access (access internal hosts)"
             echo ""
             echo "Examples:"
-            echo "  claude-yolo                                          # Run Claude in YOLO mode"
+            echo "  claude-yolo                                          # Run Claude in YOLO mode (default)"
+            echo "  claude-yolo --local                                  # Run locally without container"
             echo "  CCYOLO_DOCKER_IMAGE=custom-image claude-yolo        # Use custom image"
             echo "  claude-yolo --inspect                               # Quick access to running container"
             echo "  claude-yolo --ps                                    # See project containers"
@@ -156,7 +169,11 @@ parse_args() {
         esac
     done
 
-    exec "$CLAUDE_SH" --yolo "${claude_args[@]}"
+    if [ "$use_yolo" = true ]; then
+        exec "$CLAUDE_SH" --yolo "${claude_args[@]}"
+    else
+        exec "$CLAUDE_SH" "${claude_args[@]}"
+    fi
 }
 
 parse_args "$@"

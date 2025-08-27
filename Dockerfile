@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates curl wget git gnupg lsb-release locales sudo \
+        ca-certificates curl wget git git-lfs gnupg lsb-release locales sudo \
         software-properties-common build-essential pkg-config libssl-dev \
         unzip zip bzip2 xz-utils tini gosu less man-db \
         python3-dev libffi-dev \
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         openssh-client rsync \
         shellcheck bat fd-find silversearcher-ag \
         vim \
-        git procps psmisc zsh && \
+        procps psmisc zsh && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -108,6 +108,7 @@ RUN --mount=type=cache,target=/tmp/delta-cache,sharing=locked \
     mv delta-0.18.2-${DELTA_ARCH}-unknown-linux-gnu/delta /usr/local/bin/ && \
     rm -rf delta-0.18.2-${DELTA_ARCH}-unknown-linux-gnu*
 
+
 ENV NPM_CONFIG_FETCH_RETRIES=5 \
     NPM_CONFIG_FETCH_RETRY_FACTOR=2 \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=10000
@@ -139,6 +140,10 @@ RUN npm config set prefix "$CLAUDE_HOME/.npm-global" && \
     npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @mariozechner/claude-trace && \
     npm cache clean --force
 
+# Install Go tools for Atlassian integration (Confluence/Jira/Bitbucket)
+RUN go install github.com/lroolle/atlas-cli/cmd/atl@main && \
+    sudo mv $HOME/go/bin/atl /usr/local/bin/
+
 RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh "$CLAUDE_HOME/.oh-my-zsh" && \
     git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$CLAUDE_HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" && \
     git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git "$CLAUDE_HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
@@ -148,7 +153,7 @@ RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > "$CLAUDE_HOME/.zshrc" && \
     echo 'ZSH_THEME="robbyrussell"' >> "$CLAUDE_HOME/.zshrc" && \
     echo 'plugins=(git docker python golang node npm aws zsh-autosuggestions zsh-syntax-highlighting)' >> "$CLAUDE_HOME/.zshrc" && \
     echo 'source $ZSH/oh-my-zsh.sh' >> "$CLAUDE_HOME/.zshrc" && \
-    echo 'export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:/usr/local/go/bin:$PATH' >> "$CLAUDE_HOME/.zshrc"
+    echo 'export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/go/bin:/usr/local/go/bin:$PATH' >> "$CLAUDE_HOME/.zshrc"
 
 USER root
 

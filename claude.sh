@@ -1,9 +1,6 @@
 #!/bin/bash
 set -e
 
-# Claude Starter Script with Docker Support
-# Runs Claude Code CLI locally or in a Docker container for safe execution
-
 VERSION="0.4.2"
 DOCKER_IMAGE="${CCYOLO_DOCKER_IMAGE:-ghcr.io/thevibeworks/ccyolo}"
 DOCKER_TAG="${CCYOLO_DOCKER_TAG:-latest}"
@@ -73,11 +70,14 @@ show_help() {
     echo "  CLAUDE_CODE_OAUTH_TOKEN     Claude OAuth token (required for oat) [EXPERIMENTAL]"
     echo "  HTTP_PROXY                  HTTP proxy"
     echo "  HTTPS_PROXY                 HTTPS proxy"
+    echo "  grpc_proxy                  gRPC proxy (takes precedence over HTTPS/HTTP)"
+    echo "  no_grpc_proxy               Hosts to bypass gRPC proxy (comma-separated)"
     echo "  CCYOLO_DOCKER               Set to 'true' to always use Docker mode"
     echo "  CCYOLO_DOCKER_TAG           Docker image tag (default: latest)"
     echo "  CLAUDE_UID                  Override container user UID (default: host user UID)"
     echo "  CLAUDE_GID                  Override container user GID (default: host user GID)"
-    echo "  CLAUDE_CODE_MAX_OUTPUT_TOKENS  Maximum output tokens limit"
+    echo "  CLAUDE_CODE_MAX_OUTPUT_TOKENS  Maximum output tokens limit
+  MAX_THINKING_TOKENS         Maximum thinking tokens limit (must be < max output)"
     echo "  CLAUDE_CODE_USE_VERTEX      Use Google Vertex AI"
     echo "  DISABLE_TELEMETRY           Disable Claude Code telemetry"
     echo "  CCYOLO_DOCKER_SOCKET        Mount Docker socket (default: false, set to 'true' to enable)"
@@ -125,28 +125,74 @@ check_image() {
     fi
 }
 
-get_model_arn() {
+convert_model_alias() {
     local model_alias="$1"
-    local model_name=""
-
+    local target_format="$2"  # "api", "bedrock", or "vertex"
+    
     case "$model_alias" in
-    "sonnet-4") model_name="us.anthropic.claude-sonnet-4-20250514-v1:0" ;;
-    "opus-4") model_name="us.anthropic.claude-opus-4-20250514-v1:0" ;;
-    "sonnet-3-7") model_name="us.anthropic.claude-3-7-sonnet-20250219-v1:0" ;;
-    "sonnet-3-5" | "sonnet-3-5-v2") model_name="us.anthropic.claude-3-5-sonnet-20241022-v2:0" ;;
-    "sonnet-3-5-v1") model_name="us.anthropic.claude-3-5-sonnet-20240620-v1:0" ;;
-    "haiku-3-5") model_name="us.anthropic.claude-3-5-haiku-20241022-v1:0" ;;
-    "sonnet-3") model_name="us.anthropic.claude-3-sonnet-20240229-v1:0" ;;
-    "opus-3") model_name="us.anthropic.claude-3-opus-20240229-v1:0" ;;
-    "haiku-3") model_name="us.anthropic.claude-3-haiku-20240307-v1:0" ;;
-    "deepseek-r1") model_name="us.deepseek.r1-v1:0" ;;
+    "sonnet-4")
+        case "$target_format" in
+        "api") echo "claude-sonnet-4-20250514" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "opus-4")
+        case "$target_format" in
+        "api") echo "claude-opus-4-20250514" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-opus-4-20250514-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "sonnet-3-7")
+        case "$target_format" in
+        "api") echo "claude-3-7-sonnet-20250219" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "sonnet-3-5"|"sonnet-3-5-v2")
+        case "$target_format" in
+        "api") echo "claude-3-5-sonnet-20241022" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "sonnet-3-5-v1")
+        case "$target_format" in
+        "api") echo "claude-3-5-sonnet-20240620" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-3-5-sonnet-20240620-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "haiku-3-5")
+        case "$target_format" in
+        "api") echo "claude-3-5-haiku-20241022" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "sonnet-3")
+        case "$target_format" in
+        "api") echo "claude-3-sonnet-20240229" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-3-sonnet-20240229-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "opus-3")
+        case "$target_format" in
+        "api") echo "claude-3-opus-20240229" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-3-opus-20240229-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "haiku-3")
+        case "$target_format" in
+        "api") echo "claude-3-haiku-20240307" ;;
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.anthropic.claude-3-haiku-20240307-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
+    "deepseek-r1")
+        case "$target_format" in
+        "bedrock") echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/us.deepseek.r1-v1:0" ;;
+        *) echo "$model_alias" ;;
+        esac ;;
     *)
         echo "$model_alias"
-        return
         ;;
     esac
-
-    echo "arn:aws:bedrock:${AWS_REGION}:${AWS_PROFILE_ID}:inference-profile/${model_name}"
 }
 
 USE_TRACE=false
@@ -160,13 +206,28 @@ EXTRA_DOCKER_ARGS=()
 CONFIG_DIR=""
 SKIP_CONFIG=false
 QUIET=false
+DOCKER_ONLY_WARNINGS=()
 
 green() { echo -e "\033[32m$1\033[0m"; }
 yellow() { echo -e "\033[33m$1\033[0m"; }
 bright_yellow() { echo -e "\033[93m$1\033[0m"; }
 blue() { echo -e "\033[34m$1\033[0m"; }
 
-# Validate environment variable name
+warn_docker_only_features() {
+    if [ ${#DOCKER_ONLY_WARNINGS[@]} -eq 0 ]; then
+        return
+    fi
+    
+    echo ""
+    yellow '⚠ Docker-only features detected in local mode:'
+    for warning in "${DOCKER_ONLY_WARNINGS[@]}"; do
+        echo "   $warning"
+    done
+    echo -n "   "
+    blue 'Use --yolo for full feature support'
+    echo ""
+}
+
 validate_env_name() {
     local name="$1"
     if [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
@@ -176,16 +237,21 @@ validate_env_name() {
     fi
 }
 
-# Validate volume mount syntax
 validate_volume_mount() {
     local mount="$1"
-    # Basic validation: must have at least host:container format
     if [[ "$mount" =~ ^[^:]+:[^:]+$ ]] || [[ "$mount" =~ ^[^:]+:[^:]+:[^:]+$ ]]; then
-        # Check for path traversal attempts
-        if [[ "$mount" =~ \.\. ]]; then
-            echo "warning: volume mount contains '..' path traversal: $mount" >&2
+        # Extract source path (before first colon)
+        local source_path="${mount%%:*}"
+        
+        # Allow ../sibling (one level up) which is common for mounting adjacent directories
+        # Block ../../ and deeper (2+ levels) as potentially dangerous
+        # Also block absolute paths with .. like /etc/../../../
+        if [[ "$source_path" =~ \.\./\.\. ]] || [[ "$source_path" =~ ^/.*\.\. ]]; then
+            echo "warning: dangerous path traversal in volume mount: $mount" >&2
             return 1
         fi
+        
+        # Allow normal relative paths like ../sibling-dir
         return 0
     else
         echo "warning: invalid volume mount format: $mount" >&2
@@ -193,7 +259,6 @@ validate_volume_mount() {
     fi
 }
 
-# Expand shell-style variable defaults: ${VAR:-default}
 expand_env_value() {
     local value="$1"
     local expanded="$value"
@@ -211,142 +276,197 @@ expand_env_value() {
     echo "$expanded"
 }
 
-load_config_file() {
-    local config_file="$1"
-
-    if [ ! -f "$config_file" ]; then
+validate_config_value() {
+    local key="$1"
+    local value="$2"
+    
+    # Check for backticks (never allowed)
+    if [[ "$value" =~ [\`] ]]; then
+        echo "Security violation in $key=$value (backticks not allowed)"
         return 1
     fi
-
-    # Read and parse config file safely
-    while IFS= read -r line || [ -n "$line" ]; do
-        # Skip comments and empty lines
-        if [[ "$line" =~ ^[[:space:]]*# ]] || [[ "$line" =~ ^[[:space:]]*$ ]]; then
-            continue
-        fi
-
-        # Handle volume entries (VOLUME=...)
-        if [[ "$line" =~ ^[[:space:]]*VOLUME[[:space:]]*=[[:space:]]*(.+)$ ]]; then
-            local volume_entry="${BASH_REMATCH[1]}"
-            # Remove quotes
-            volume_entry=$(echo "$volume_entry" | sed 's/^"//;s/"$//')
-            # Expand ~ and $(pwd) safely
-            volume_entry="${volume_entry/#\~/$HOME}"
-            volume_entry="${volume_entry//\$(pwd)/$PWD}"
-            volume_entry="${volume_entry//\$PWD/$PWD}"
-            # Validate volume mount
-            if validate_volume_mount "$volume_entry"; then
-                EXTRA_VOLUMES+=("-v" "$volume_entry")
+    
+    # Check for command substitution - only allow $(pwd) and $PWD
+    if [[ "$value" =~ \$\([^\)]*\) ]]; then
+        # Extract all command substitutions
+        local temp_value="$value"
+        while [[ "$temp_value" =~ \$\(([^\)]*)\) ]]; do
+            local cmd="${BASH_REMATCH[1]}"
+            if [[ "$cmd" != "pwd" ]]; then
+                echo "Security violation in $key=$value (only \$(pwd) allowed in command substitution)"
+                return 1
             fi
-            continue
-        fi
-
-        # Handle environment variable entries (ENV=...)
-        if [[ "$line" =~ ^[[:space:]]*ENV[[:space:]]*=[[:space:]]*(.+)$ ]]; then
-            local env_entry="${BASH_REMATCH[1]}"
-            # Remove quotes
-            env_entry=$(echo "$env_entry" | sed 's/^"//;s/"$//')
-            if [[ "$env_entry" == *"="* ]]; then
-                # Extract variable name and value
-                local var_name="${env_entry%%=*}"
-                local var_value="${env_entry#*=}"
-
-                if validate_env_name "$var_name"; then
-                    # Expand any ${VAR:-default} syntax in the value
-                    var_value=$(expand_env_value "$var_value")
-                    EXTRA_ENV_VARS+=("-e" "$var_name=$var_value")
-                else
-                    echo "warning: invalid environment variable name in config: $var_name" >&2
-                fi
-            else
-                # Get value from environment
-                if validate_env_name "$env_entry"; then
-                    local env_value="${!env_entry}"
-                    if [ -n "$env_value" ]; then
-                        EXTRA_ENV_VARS+=("-e" "$env_entry=$env_value")
-                    fi
-                else
-                    echo "warning: invalid environment variable name in config: $env_entry" >&2
-                fi
-            fi
-            continue
-        fi
-
-        # Handle simple variable assignments
-        if [[ "$line" =~ ^[[:space:]]*([A-Z_]+)[[:space:]]*=[[:space:]]*(.+)$ ]]; then
-            local var_name="${BASH_REMATCH[1]}"
-            local var_value="${BASH_REMATCH[2]}"
-
-            # Remove quotes from value
-            var_value=$(echo "$var_value" | sed 's/^"//;s/"$//')
-
-            # Expand ~ in paths
-            var_value="${var_value/#\~/$HOME}"
-
-            case "$var_name" in
-            "ANTHROPIC_MODEL") export ANTHROPIC_MODEL="$var_value" ;;
-            "AUTH_MODE") AUTH_MODE="$var_value" ;;
-            "CONFIG_DIR")
-                CONFIG_DIR="$var_value"
-                # Validate path - no traversal allowed
-                if [[ "$CONFIG_DIR" =~ \.\. ]]; then
-                    echo "warning: CONFIG_DIR contains path traversal '..': $CONFIG_DIR" >&2
-                    CONFIG_DIR=""
-                else
-                    # Create directory if it doesn't exist
-                    if [ ! -d "$CONFIG_DIR" ]; then
-                        mkdir -p "$CONFIG_DIR"
-                    fi
-                    if [ ! -f "$CONFIG_DIR/.claude.json" ]; then
-                        echo '{}' >"$CONFIG_DIR/.claude.json"
-                    fi
-                fi
-                ;;
-            "USE_TRACE" | "TRACE")
-                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                    USE_TRACE=true
-                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
-                    USE_TRACE=false
-                fi
-                ;;
-            "VERBOSE")
-                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                    VERBOSE=true
-                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
-                    VERBOSE=false
-                fi
-                ;;
-            "USE_DOCKER" | "YOLO")
-                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                    USE_DOCKER=true
-                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
-                    USE_DOCKER=false
-                fi
-                ;;
-            "CONTINUE")
-                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                    CLAUDE_ARGS+=("--continue")
-                elif [ "$var_value" = "false" ] || [ "$var_value" = "0" ]; then
-                    # Remove --continue if it was added by a lower precedence config
-                    CLAUDE_ARGS=("${CLAUDE_ARGS[@]/--continue/}")
-                fi
-                ;;
-            "HOST_NET")
-                if [ "$var_value" = "true" ] || [ "$var_value" = "1" ]; then
-                    EXTRA_DOCKER_ARGS+=("--net" "host")
-                fi
-                ;;
-            # Pass through other environment variables
-            *)
-                if [[ "$var_name" =~ ^(DISABLE_|MAX_|ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_) ]]; then
-                    export "$var_name"="$var_value"
-                fi
-                ;;
-            esac
-        fi
-    done <"$config_file"
-
+            # Remove this match and continue checking
+            temp_value="${temp_value/\$\($cmd\)/REPLACED}"
+        done
+    fi
+    
+    case "$key" in
+        AUTH_MODE)
+            [[ "$value" =~ ^(claude|oat|api-key|bedrock|vertex)$ ]] || {
+                echo "Invalid AUTH_MODE: $value"
+                return 1
+            }
+            ;;
+        CONFIG_DIR)
+            [[ ! "$value" =~ \.\. ]] || {
+                echo "Path traversal in CONFIG_DIR: $value"
+                return 1
+            }
+            ;;
+    esac
+    
     return 0
+}
+
+process_volume_config() {
+    local value="$1"
+    local errors_var="$2"
+    
+    value="${value//\"}"
+    
+    if ! validate_config_value "VOLUME" "$value"; then
+        eval "$errors_var+=(\"Invalid volume: \$value\")"
+        return 1
+    fi
+    
+    value="${value/#\~/$HOME}"
+    value="${value//\$(pwd)/$PWD}"
+    value="${value//\$PWD/$PWD}"
+    
+    if validate_volume_mount "$value"; then
+        EXTRA_VOLUMES+=("-v" "$value")
+        DOCKER_ONLY_WARNINGS+=("Config volume mount: $value (ignored in local mode)")
+    else
+        eval "$errors_var+=(\"Volume validation failed: \$value\")"
+    fi
+}
+
+process_env_config() {
+    local value="$1"
+    local errors_var="$2"
+    
+    value="${value//\"}"
+    
+    if ! validate_config_value "ENV" "$value"; then
+        eval "$errors_var+=(\"Invalid env: \$value\")"
+        return 1
+    fi
+    
+    if [[ "$value" == *"="* ]]; then
+        local name="${value%%=*}" val="${value#*=}"
+        if validate_env_name "$name"; then
+            val=$(expand_env_value "$val")
+            EXTRA_ENV_VARS+=("-e" "$name=$val")
+            DOCKER_ONLY_WARNINGS+=("Config environment variable: $name=$val (ignored in local mode)")
+        else
+            eval "$errors_var+=(\"Invalid env name: \$name\")"
+        fi
+    else
+        if validate_env_name "$value" && [ -n "${!value}" ]; then
+            EXTRA_ENV_VARS+=("-e" "$value=${!value}")
+            DOCKER_ONLY_WARNINGS+=("Config environment variable: $value=${!value} (ignored in local mode)")
+        fi
+    fi
+}
+
+process_var_config() {
+    local name="$1"
+    local value="$2"
+    local errors_var="$3"
+    
+    if ! [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+        eval "$errors_var+=(\"Invalid variable name: \$name\")"
+        return 1
+    fi
+    
+    value="${value//\"}"
+    
+    if ! validate_config_value "$name" "$value"; then
+        eval "$errors_var+=(\"Validation failed for \$name=\$value\")"
+        return 1
+    fi
+    
+    value="${value/#\~/$HOME}"
+    
+    case "$name" in
+    ANTHROPIC_MODEL) export ANTHROPIC_MODEL="$value" ;;
+    AUTH_MODE) AUTH_MODE="$value" ;;
+    CONFIG_DIR)
+        CONFIG_DIR="$value"
+        if [ ! -d "$CONFIG_DIR" ]; then
+            mkdir -p "$CONFIG_DIR" 2>/dev/null || {
+                eval "$errors_var+=(\"Cannot create CONFIG_DIR: \$CONFIG_DIR\")"
+                CONFIG_DIR=""
+                return 1
+            }
+        fi
+        if [ -n "$CONFIG_DIR" ] && [ ! -f "$CONFIG_DIR/.claude.json" ]; then
+            echo '{}' >"$CONFIG_DIR/.claude.json" 2>/dev/null || {
+                eval "$errors_var+=(\"Cannot create \$CONFIG_DIR/.claude.json\")"
+            }
+        fi
+        ;;
+    USE_TRACE|TRACE)
+        [[ "$value" =~ ^(true|1)$ ]] && USE_TRACE=true
+        [[ "$value" =~ ^(false|0)$ ]] && USE_TRACE=false
+        ;;
+    VERBOSE)
+        [[ "$value" =~ ^(true|1)$ ]] && VERBOSE=true
+        [[ "$value" =~ ^(false|0)$ ]] && VERBOSE=false
+        ;;
+    USE_DOCKER|YOLO)
+        [[ "$value" =~ ^(true|1)$ ]] && USE_DOCKER=true
+        [[ "$value" =~ ^(false|0)$ ]] && USE_DOCKER=false
+        ;;
+    CONTINUE)
+        if [[ "$value" =~ ^(true|1)$ ]]; then
+            CLAUDE_ARGS+=("--continue")
+        elif [[ "$value" =~ ^(false|0)$ ]]; then
+            CLAUDE_ARGS=("${CLAUDE_ARGS[@]/--continue/}")
+        fi
+        ;;
+    HOST_NET)
+        if [[ "$value" =~ ^(true|1)$ ]]; then
+            EXTRA_DOCKER_ARGS+=("--net" "host")
+            DOCKER_ONLY_WARNINGS+=("Config host networking (ignored in local mode)")
+        fi
+        ;;
+    *)
+        if [[ "$name" =~ ^(DISABLE_|MAX_|ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_) ]]; then
+            export "$name"="$value"
+        else
+            eval "$errors_var+=(\"Unknown config variable: \$name\")"
+        fi
+        ;;
+    esac
+}
+
+load_config_file() {
+    local config_file="$1"
+    [ -f "$config_file" ] || return 1
+    
+    local errors=()
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        [[ "$line" =~ ^[[:space:]]*#|^[[:space:]]*$ ]] && continue
+        
+        if [[ "$line" =~ ^[[:space:]]*VOLUME[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+            process_volume_config "${BASH_REMATCH[1]}" errors
+        elif [[ "$line" =~ ^[[:space:]]*ENV[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+            process_env_config "${BASH_REMATCH[1]}" errors
+        elif [[ "$line" =~ ^[[:space:]]*([A-Z_]+)[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+            process_var_config "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" errors
+        else
+            errors+=("Invalid line format: $line")
+        fi
+    done < "$config_file"
+    
+    if [ ${#errors[@]} -gt 0 ]; then
+        echo "ERROR: Config file $config_file has ${#errors[@]} error(s):" >&2
+        printf '%s\n' "${errors[@]}" >&2
+        exit 1
+    fi
 }
 
 # Check for --no-config flag first (before loading config)
@@ -359,8 +479,12 @@ done
 
 # Load config files if not skipped (in reverse precedence order)
 if [ "$SKIP_CONFIG" = false ]; then
-    # Load in order: global → project → local (so local overrides)
+    # Follow XDG Base Directory specification
+    XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+    
+    # Load in order: XDG global → legacy global → project → local (so local overrides)
     config_files=(
+        "$XDG_CONFIG_HOME/claude-yolo/.claude-yolo"
         "$HOME/.claude-yolo"
         ".claude-yolo"
         ".claude-yolo.local"
@@ -470,6 +594,7 @@ while [ $i -lt ${#args[@]} ]; do
         # Volume mounting (only in Docker mode)
         if [ $((i + 1)) -lt ${#args[@]} ]; then
             EXTRA_VOLUMES+=("-v" "${args[$((i + 1))]}")
+            DOCKER_ONLY_WARNINGS+=("Volume mount: ${args[$((i + 1))]} (ignored in local mode)")
             i=$((i + 2))
         else
             echo "error: -v requires an argument" >&2
@@ -482,10 +607,12 @@ while [ $i -lt ${#args[@]} ]; do
             env_spec="${args[$((i + 1))]}"
             if [[ "$env_spec" == *"="* ]]; then
                 EXTRA_ENV_VARS+=("-e" "$env_spec")
+                DOCKER_ONLY_WARNINGS+=("Environment variable: $env_spec (ignored in local mode)")
             else
                 env_value="${!env_spec}"
                 if [ -n "$env_value" ]; then
                     EXTRA_ENV_VARS+=("-e" "$env_spec=$env_value")
+                    DOCKER_ONLY_WARNINGS+=("Environment variable: $env_spec=$env_value (ignored in local mode)")
                 else
                     echo "warning: environment variable $env_spec not set, skipping" >&2
                 fi
@@ -504,6 +631,7 @@ while [ $i -lt ${#args[@]} ]; do
     --host-net)
         # Enable host network mode for Docker
         EXTRA_DOCKER_ARGS+=("--net" "host")
+        DOCKER_ONLY_WARNINGS+=("Host networking (ignored in local mode)")
         i=$((i + 1))
         ;;
     *)
@@ -543,11 +671,13 @@ run_claude_local() {
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
         ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
 
-        export ANTHROPIC_MODEL=$(get_model_arn "$ANTHROPIC_MODEL")
-        export ANTHROPIC_SMALL_FAST_MODEL=$(get_model_arn "$ANTHROPIC_SMALL_FAST_MODEL")
+        ANTHROPIC_MODEL=$(convert_model_alias "$ANTHROPIC_MODEL" "bedrock")
+        ANTHROPIC_SMALL_FAST_MODEL=$(convert_model_alias "$ANTHROPIC_SMALL_FAST_MODEL" "bedrock")
+        export ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL
         export CLAUDE_CODE_USE_BEDROCK=1
         export AWS_REGION="$AWS_REGION"
         export CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
+        export MAX_THINKING_TOKENS=6144
         ;;
     "api-key")
         AUTH_STATUS="$(yellow 'API-KEY')"
@@ -555,34 +685,12 @@ run_claude_local() {
             echo "error: ANTHROPIC_API_KEY not set. Required for --api-key mode."
             exit 1
         fi
-        # For API key mode, use model aliases (convert to actual model names if using aliases)
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
         ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
 
-        # Convert aliases to actual model names for API key usage
-        case "$ANTHROPIC_MODEL" in
-        "sonnet-4") export ANTHROPIC_MODEL="claude-sonnet-4-20250514" ;;
-        "opus-4") export ANTHROPIC_MODEL="claude-opus-4-20250514" ;;
-        "sonnet-3-7") export ANTHROPIC_MODEL="claude-3-7-sonnet-20250219" ;;
-        "sonnet-3-5" | "sonnet-3-5-v2") export ANTHROPIC_MODEL="claude-3-5-sonnet-20241022" ;;
-        "sonnet-3-5-v1") export ANTHROPIC_MODEL="claude-3-5-sonnet-20240620" ;;
-        "haiku-3-5") export ANTHROPIC_MODEL="claude-3-5-haiku-20241022" ;;
-        "sonnet-3") export ANTHROPIC_MODEL="claude-3-sonnet-20240229" ;;
-        "opus-3") export ANTHROPIC_MODEL="claude-3-opus-20240229" ;;
-        "haiku-3") export ANTHROPIC_MODEL="claude-3-haiku-20240307" ;;
-        esac
-
-        case "$ANTHROPIC_SMALL_FAST_MODEL" in
-        "sonnet-4") export ANTHROPIC_SMALL_FAST_MODEL="claude-sonnet-4-20250514" ;;
-        "opus-4") export ANTHROPIC_SMALL_FAST_MODEL="claude-opus-4-20250514" ;;
-        "sonnet-3-7") export ANTHROPIC_SMALL_FAST_MODEL="claude-3-7-sonnet-20250219" ;;
-        "sonnet-3-5" | "sonnet-3-5-v2") export ANTHROPIC_SMALL_FAST_MODEL="claude-3-5-sonnet-20241022" ;;
-        "sonnet-3-5-v1") export ANTHROPIC_SMALL_FAST_MODEL="claude-3-5-sonnet-20240620" ;;
-        "haiku-3-5") export ANTHROPIC_SMALL_FAST_MODEL="claude-3-5-haiku-20241022" ;;
-        "sonnet-3") export ANTHROPIC_SMALL_FAST_MODEL="claude-3-sonnet-20240229" ;;
-        "opus-3") export ANTHROPIC_SMALL_FAST_MODEL="claude-3-opus-20240229" ;;
-        "haiku-3") export ANTHROPIC_SMALL_FAST_MODEL="claude-3-haiku-20240307" ;;
-        esac
+        ANTHROPIC_MODEL=$(convert_model_alias "$ANTHROPIC_MODEL" "api")
+        ANTHROPIC_SMALL_FAST_MODEL=$(convert_model_alias "$ANTHROPIC_SMALL_FAST_MODEL" "api")
+        export ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL
 
         echo "Main model: $ANTHROPIC_MODEL"
         echo "Fast model: $ANTHROPIC_SMALL_FAST_MODEL"
@@ -591,6 +699,7 @@ run_claude_local() {
         AUTH_STATUS="$(yellow 'VERTEX')"
         export CLAUDE_CODE_USE_VERTEX=1
         export CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
+        export MAX_THINKING_TOKENS=6144
 
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
         ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
@@ -629,14 +738,14 @@ run_claude_local() {
 
     echo ""
     echo "$HEADER_LINE"
-    
+
     # Show Claude version with compact format
     if [ -n "$CLAUDE_VERSION" ]; then
         echo "Claude: $(blue "Local") $(green "(v$CLAUDE_VERSION)")"
     else
         echo "Claude: $(blue "Local")"
     fi
-    
+
     echo "Work: $(blue "$(pwd)")"
 
     # Show config loaded information
@@ -649,7 +758,16 @@ run_claude_local() {
 
     ENV_VARS=""
     [ -n "$ANTHROPIC_MODEL" ] && ENV_VARS+="   $(green 'MODEL'): $ANTHROPIC_MODEL\n"
-    [ -n "$HTTP_PROXY" ] && ENV_VARS+="   $(yellow 'PROXY'): $HTTP_PROXY\n"
+    if [ -n "$grpc_proxy" ]; then
+        ENV_VARS+="   $(yellow 'gRPC PROXY'): $grpc_proxy\n"
+    elif [ -n "$GRPC_PROXY" ]; then
+        ENV_VARS+="   $(yellow 'gRPC PROXY'): $GRPC_PROXY\n"
+    fi
+    if [ -n "$HTTP_PROXY" ]; then
+        ENV_VARS+="   $(yellow 'HTTP PROXY'): $HTTP_PROXY\n"
+    elif [ -n "$http_proxy" ]; then
+        ENV_VARS+="   $(yellow 'HTTP PROXY'): $http_proxy\n"
+    fi
 
     if [ -n "$ENV_VARS" ]; then
         echo "Envs:"
@@ -666,11 +784,11 @@ run_claude_local() {
 
     if [ "$has_dangerous_flag" = true ]; then
         echo ""
-        echo "$(bright_yellow 'BYPASS MODE - claude-code now gets full access to current workspace without asking for permission')"
+        bright_yellow 'BYPASS MODE - claude-code now gets full access to current workspace without asking for permission'
     fi
 
     echo ""
-    echo "$(blue '────────────────────────────────────')"
+    blue '────────────────────────────────────'
     echo ""
 
     if [ "$USE_TRACE" = true ]; then
@@ -690,7 +808,8 @@ run_claude_local() {
 }
 
 check_dangerous_directory() {
-    local current_dir="$(pwd)"
+    local current_dir
+    current_dir="$(pwd)"
     local dangerous_dirs=(
         "$HOME"
         "/"
@@ -746,6 +865,7 @@ warn_dangerous_directory() {
 }
 
 if [ "$USE_DOCKER" != true ]; then
+    warn_docker_only_features
     run_claude_local
     exit 0
 fi
@@ -839,6 +959,21 @@ elif [ -n "$no_proxy" ]; then
     DOCKER_ARGS+=("-e" "NO_PROXY=$no_proxy")
 fi
 
+# Pass gRPC proxy environment variables
+if [ -n "$grpc_proxy" ]; then
+    grpc_proxy_DOCKER=$(echo "$grpc_proxy" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
+    DOCKER_ARGS+=("-e" "grpc_proxy=$grpc_proxy_DOCKER")
+elif [ -n "$GRPC_PROXY" ]; then
+    GRPC_PROXY_DOCKER=$(echo "$GRPC_PROXY" | sed 's/127\.0\.0\.1/host.docker.internal/g' | sed 's/localhost/host.docker.internal/g')
+    DOCKER_ARGS+=("-e" "grpc_proxy=$GRPC_PROXY_DOCKER")
+fi
+
+if [ -n "$no_grpc_proxy" ]; then
+    DOCKER_ARGS+=("-e" "no_grpc_proxy=$no_grpc_proxy")
+elif [ -n "$NO_GRPC_PROXY" ]; then
+    DOCKER_ARGS+=("-e" "no_grpc_proxy=$NO_GRPC_PROXY")
+fi
+
 DOCKER_ARGS+=("--add-host" "host.docker.internal:host-gateway")
 
 # Pass timezone - auto-detect if not set
@@ -857,6 +992,7 @@ fi
 [ -n "$TERM" ] && DOCKER_ARGS+=("-e" "TERM=$TERM")
 [ -n "$EDITOR" ] && DOCKER_ARGS+=("-e" "EDITOR=$EDITOR")
 [ -n "$CLAUDE_CODE_MAX_OUTPUT_TOKENS" ] && DOCKER_ARGS+=("-e" "CLAUDE_CODE_MAX_OUTPUT_TOKENS=$CLAUDE_CODE_MAX_OUTPUT_TOKENS")
+[ -n "$MAX_THINKING_TOKENS" ] && DOCKER_ARGS+=("-e" "MAX_THINKING_TOKENS=$MAX_THINKING_TOKENS")
 
 # Pass Git configuration
 [ -n "$GIT_AUTHOR_NAME" ] && DOCKER_ARGS+=("-e" "GIT_AUTHOR_NAME=$GIT_AUTHOR_NAME")
@@ -902,8 +1038,8 @@ case "$AUTH_MODE" in
     ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
     ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
 
-    MAIN_MODEL_ARN=$(get_model_arn "$ANTHROPIC_MODEL")
-    FAST_MODEL_ARN=$(get_model_arn "$ANTHROPIC_SMALL_FAST_MODEL")
+    MAIN_MODEL_ARN=$(convert_model_alias "$ANTHROPIC_MODEL" "bedrock")
+    FAST_MODEL_ARN=$(convert_model_alias "$ANTHROPIC_SMALL_FAST_MODEL" "bedrock")
 
     DOCKER_ARGS+=(
         "-e" "ANTHROPIC_MODEL=$MAIN_MODEL_ARN"
@@ -911,6 +1047,7 @@ case "$AUTH_MODE" in
         "-e" "CLAUDE_CODE_USE_BEDROCK=1"
         "-e" "AWS_REGION=$AWS_REGION"
         "-e" "CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192"
+        "-e" "MAX_THINKING_TOKENS=6144"
     )
 
     [ -n "$AWS_ACCESS_KEY_ID" ] && DOCKER_ARGS+=("-e" "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID")
@@ -935,31 +1072,8 @@ case "$AUTH_MODE" in
     ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$DEFAULT_ANTHROPIC_MODEL}"
     ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-$DEFAULT_ANTHROPIC_SMALL_FAST_MODEL}"
 
-    case "$ANTHROPIC_MODEL" in
-    "sonnet-4") MAIN_MODEL_NAME="claude-sonnet-4-20250514" ;;
-    "opus-4") MAIN_MODEL_NAME="claude-opus-4-20250514" ;;
-    "sonnet-3-7") MAIN_MODEL_NAME="claude-3-7-sonnet-20250219" ;;
-    "sonnet-3-5" | "sonnet-3-5-v2") MAIN_MODEL_NAME="claude-3-5-sonnet-20241022" ;;
-    "sonnet-3-5-v1") MAIN_MODEL_NAME="claude-3-5-sonnet-20240620" ;;
-    "haiku-3-5") MAIN_MODEL_NAME="claude-3-5-haiku-20241022" ;;
-    "sonnet-3") MAIN_MODEL_NAME="claude-3-sonnet-20240229" ;;
-    "opus-3") MAIN_MODEL_NAME="claude-3-opus-20240229" ;;
-    "haiku-3") MAIN_MODEL_NAME="claude-3-haiku-20240307" ;;
-    *) MAIN_MODEL_NAME="$ANTHROPIC_MODEL" ;;
-    esac
-
-    case "$ANTHROPIC_SMALL_FAST_MODEL" in
-    "sonnet-4") FAST_MODEL_NAME="claude-sonnet-4-20250514" ;;
-    "opus-4") FAST_MODEL_NAME="claude-opus-4-20250514" ;;
-    "sonnet-3-7") FAST_MODEL_NAME="claude-3-7-sonnet-20250219" ;;
-    "sonnet-3-5" | "sonnet-3-5-v2") FAST_MODEL_NAME="claude-3-5-sonnet-20241022" ;;
-    "sonnet-3-5-v1") FAST_MODEL_NAME="claude-3-5-sonnet-20240620" ;;
-    "haiku-3-5") FAST_MODEL_NAME="claude-3-5-haiku-20241022" ;;
-    "sonnet-3") FAST_MODEL_NAME="claude-3-sonnet-20240229" ;;
-    "opus-3") FAST_MODEL_NAME="claude-3-opus-20240229" ;;
-    "haiku-3") FAST_MODEL_NAME="claude-3-haiku-20240307" ;;
-    *) FAST_MODEL_NAME="$ANTHROPIC_SMALL_FAST_MODEL" ;;
-    esac
+    MAIN_MODEL_NAME=$(convert_model_alias "$ANTHROPIC_MODEL" "api")
+    FAST_MODEL_NAME=$(convert_model_alias "$ANTHROPIC_SMALL_FAST_MODEL" "api")
 
     DOCKER_ARGS+=("-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
     DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$MAIN_MODEL_NAME")
@@ -975,6 +1089,7 @@ case "$AUTH_MODE" in
     DOCKER_ARGS+=(
         "-e" "CLAUDE_CODE_USE_VERTEX=1"
         "-e" "CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192"
+        "-e" "MAX_THINKING_TOKENS=6144"
         "-e" "ANTHROPIC_MODEL=$ANTHROPIC_MODEL"
         "-e" "ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL"
     )
@@ -1019,7 +1134,6 @@ esac
 
 if [ -n "$CONFIG_DIR" ]; then
     # Custom config directory - mount everything user put there
-    CLAUDE_CONFIG_BASE="$CONFIG_DIR"
 
     if [ "$AUTH_MODE" = "claude" ] && [ ! -d "$CONFIG_DIR/.claude" ]; then
         echo "[!] $(yellow "Custom config directory $CONFIG_DIR missing .claude - run 'claude login' first")"
@@ -1038,11 +1152,9 @@ if [ -n "$CONFIG_DIR" ]; then
             fi
         fi
     done
-    DOCKER_ARGS+=("-e" "CLAUDE_CONFIG_BASE=$CONFIG_DIR")
 else
     # Default config location - mount Claude auth files only for OAuth mode
-    CLAUDE_CONFIG_BASE="$HOME"
-    
+
     # Mount auth files for OAuth modes (claude and oat need context files)
     if [ "$AUTH_MODE" = "claude" ] || [ "$AUTH_MODE" = "oat" ]; then
         if [ -d "$HOME/.claude" ]; then
@@ -1051,7 +1163,7 @@ else
         if [ -f "$HOME/.claude.json" ]; then
             DOCKER_ARGS+=("-v" "$HOME/.claude.json:/home/claude/.claude.json")
         fi
-        
+
         if [ "$AUTH_MODE" = "claude" ] && [ ! -d "$HOME/.claude" ]; then
             echo "[!] $(yellow 'Claude not authenticated') - run 'claude login' first"
         fi
@@ -1161,7 +1273,16 @@ case "$AUTH_MODE" in
     ENV_VARS+="   $(green 'FAST'): $ANTHROPIC_SMALL_FAST_MODEL\n"
     ;;
 esac
-[ -n "$HTTP_PROXY" ] && ENV_VARS+="   $(yellow 'PROXY'): $HTTP_PROXY\n"
+if [ -n "$grpc_proxy" ]; then
+    ENV_VARS+="   $(yellow 'gRPC PROXY'): $grpc_proxy\n"
+elif [ -n "$GRPC_PROXY" ]; then
+    ENV_VARS+="   $(yellow 'gRPC PROXY'): $GRPC_PROXY\n"
+fi
+if [ -n "$HTTP_PROXY" ]; then
+    ENV_VARS+="   $(yellow 'HTTP PROXY'): $HTTP_PROXY\n"
+elif [ -n "$http_proxy" ]; then
+    ENV_VARS+="   $(yellow 'HTTP PROXY'): $http_proxy\n"
+fi
 
 # Show user-specified environment variables
 if [ ${#EXTRA_ENV_VARS[@]} -gt 0 ]; then
@@ -1187,9 +1308,9 @@ if [ -n "$ENV_VARS" ]; then
 fi
 
 echo ""
-echo "$(bright_yellow 'BYPASS MODE - claude-code now gets full access to current workspace without asking for permission')"
+bright_yellow 'BYPASS MODE - claude-code now gets full access to current workspace without asking for permission'
 echo ""
-echo "$(blue '────────────────────────────────────')"
+blue '────────────────────────────────────'
 echo ""
 
 DOCKER_ARGS+=("${DOCKER_IMAGE}:${DOCKER_TAG}")

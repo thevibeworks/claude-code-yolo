@@ -1,0 +1,162 @@
+# Claude YOLO - Complete Configuration Reference
+#
+# ALL available configuration options for claude-yolo
+# Copy sections to your config files as needed:
+# - $XDG_CONFIG_HOME/claude-yolo/.claude-yolo (global)
+# - ~/.claude-yolo (legacy global)
+# - .claude-yolo (project)
+# - .claude-yolo.local (local overrides)
+
+# =====================================
+# Core Variables
+# =====================================
+
+# Authentication method (overridden by CLI flags)
+AUTH_MODE=claude                    # claude|oat|api-key|bedrock|vertex
+
+# Model selection (when using API auth)
+ANTHROPIC_MODEL=sonnet-4           # Model alias or full name
+
+# Custom config directory for authentication
+CONFIG_DIR=~/.claude-custom        # Directory path (creates if missing)
+
+# Enable debug tracing
+USE_TRACE=true                     # true|false|1|0
+TRACE=true                         # Alias for USE_TRACE
+
+# Verbose output
+VERBOSE=true                       # true|false|1|0
+
+# Force YOLO mode (Docker execution)
+USE_DOCKER=true                    # true|false|1|0
+YOLO=true                          # Alias for USE_DOCKER
+
+# Continue previous session
+CONTINUE=true                      # true|false|1|0 (adds --continue flag)
+
+# Use host networking in Docker
+HOST_NET=true                      # true|false|1|0
+
+# =====================================
+# Environment Variables
+# =====================================
+
+# Claude-specific settings
+ENV=CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=true
+ENV=DISABLE_TELEMETRY=1
+ENV=CLAUDE_TIMEOUT=300
+
+# API limits and behavior
+ENV=MAX_TOKENS=8192
+ENV=ANTHROPIC_MAX_RETRIES=3
+ENV=ANTHROPIC_TIMEOUT=60
+
+# AWS Bedrock settings (when using --bedrock)
+ENV=AWS_REGION=us-west-2
+ENV=AWS_PROFILE=default
+
+# Google Vertex AI settings (when using --vertex)
+ENV=GOOGLE_CLOUD_PROJECT=my-project
+ENV=GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# Development environment
+ENV=NODE_ENV=development
+ENV=PYTHON_ENV=development
+ENV=DEBUG=*
+ENV=LOG_LEVEL=debug
+
+# Pass through host environment variables
+ENV=${GITHUB_TOKEN}
+ENV=${NPM_TOKEN}
+ENV=${DOCKER_HOST}
+ENV=${DATABASE_URL}
+ENV=${API_KEY}
+ENV=${SECRET_KEY}
+
+# Environment variables with defaults
+ENV=CACHE_DIR=${CACHE_DIR:-/tmp/cache}
+ENV=BUILD_ENV=${BUILD_ENV:-development}
+ENV=PORT=${PORT:-3000}
+
+# =====================================
+# Volume Mounts
+# =====================================
+
+# Git and SSH (essential for most projects)
+VOLUME=~/.ssh:/home/claude/.ssh:ro
+VOLUME=~/.gitconfig:/home/claude/.gitconfig:ro
+VOLUME=~/.config/git:/home/claude/.config/git:ro
+
+# Authentication and credentials
+VOLUME=~/.aws:/root/.aws:ro
+VOLUME=~/.config/gcloud:/root/.config/gcloud:ro
+VOLUME=~/.docker:/home/claude/.docker:ro
+
+# Development tools and configurations
+VOLUME=~/.vimrc:/home/claude/.vimrc:ro
+VOLUME=~/.tmux.conf:/home/claude/.tmux.conf:ro
+VOLUME=~/.zshrc:/home/claude/.zshrc:ro
+VOLUME=~/.bashrc:/home/claude/.bashrc:ro
+
+# Language-specific package managers (read-only for safety)
+VOLUME=~/.npm:/home/claude/.npm:ro
+VOLUME=~/.yarn:/home/claude/.yarn:ro
+VOLUME=~/.cache/pip:/home/claude/.cache/pip
+VOLUME=~/.cache/yarn:/home/claude/.cache/yarn
+VOLUME=~/.cargo:/home/claude/.cargo:ro
+VOLUME=~/.rustup:/home/claude/.rustup:ro
+VOLUME=~/.m2:/home/claude/.m2:ro
+VOLUME=~/.gradle:/home/claude/.gradle:ro
+VOLUME=~/.composer:/home/claude/.composer:ro
+VOLUME=~/.gem:/home/claude/.gem:ro
+
+# Project-specific mounts
+VOLUME=$(pwd)/docs:/workspace/docs:ro
+VOLUME=$(pwd)/references:/workspace/references:ro
+VOLUME=$(pwd)/scripts:/workspace/scripts:ro
+VOLUME=$(pwd)/tools:/workspace/tools:ro
+VOLUME=$(pwd)/templates:/workspace/templates:ro
+
+# Shared development resources
+VOLUME=~/workspace:/home/claude/workspace:ro
+VOLUME=~/tools:/home/claude/tools:ro
+VOLUME=~/scripts:/home/claude/scripts:ro
+VOLUME=~/dotfiles:/home/claude/dotfiles:ro
+
+# Development data and databases
+VOLUME=~/dev-data:/home/claude/dev-data
+VOLUME=~/tmp:/home/claude/tmp
+
+# Docker-in-Docker (requires careful consideration)
+VOLUME=/var/run/docker.sock:/var/run/docker.sock
+
+# Build and cache directories
+VOLUME=~/.cache:/home/claude/.cache
+VOLUME=~/build-cache:/home/claude/build-cache
+
+# Logs and output directories
+VOLUME=~/logs:/home/claude/logs
+VOLUME=~/output:/home/claude/output
+
+# =====================================
+# Security Notes
+# =====================================
+#
+# VOLUME paths support:
+#   - ~ (home directory expansion)
+#   - $(pwd) (current working directory)
+#   - $PWD (current working directory)
+#   - Absolute paths only
+#
+# ENV values support:
+#   - ${VAR:-default} (environment expansion with defaults)
+#   - Direct values
+#   - Host environment pass-through (ENV=VARNAME)
+#
+# Security restrictions:
+#   - No command substitution except $(pwd)
+#   - No backticks allowed
+#   - No path traversal (..) in CONFIG_DIR
+#   - Variable names must be [A-Z][A-Z0-9_]*
+#
+# =====================================
