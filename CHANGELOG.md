@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2025-08-28
+
+### Changed
+- Updated Claude Code base version to 1.0.95 with new features:
+  - /todos command to list current todo items
+  - /memory command now allows direct editing of imported memory files  
+  - MCP output warnings when responses exceed token limits (10k warning, 25k max)
+  - Enhanced slash command improvements
+
 ## [0.5.0] - 2025-08-27
 
 ### Added
