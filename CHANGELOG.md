@@ -12,9 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated Claude Code base version to 1.0.95 with new features:
   - /todos command to list current todo items
-  - /memory command now allows direct editing of imported memory files  
+  - /memory command now allows direct editing of imported memory files
+  - Individual slash command arguments ($1, $2, $3) like shell scripts
+  - argument-hint frontmatter for slash commands (e.g., `[pr-number] [priority] [assignee]`)
   - MCP output warnings when responses exceed token limits (10k warning, 25k max)
-  - Enhanced slash command improvements
+  - Configurable MCP output limit via MAX_MCP_OUTPUT_TOKENS environment variable
+  - Vertex AI support for global endpoints
+  - SDK: Add custom tools as callbacks
 
 ## [0.5.0] - 2025-08-27
 
