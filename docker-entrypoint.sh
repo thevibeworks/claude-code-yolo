@@ -163,6 +163,15 @@ main() {
 
     export CLAUDE_VERSION="$(get_claude_version)"
 
+    if [ -n "$ANTHROPIC_BASE_URL" ]; then
+        case "$ANTHROPIC_BASE_URL" in
+            http://localhost:*|http://localhost/*|http://127.0.0.1:*|http://127.0.0.1/*)
+                export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL/localhost/host.docker.internal}"
+                export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL/127.0.0.1/host.docker.internal}"
+                ;;
+        esac
+    fi
+
     show_environment_info
 
     if [ -n "$WORKDIR" ] && [ -d "$WORKDIR" ]; then

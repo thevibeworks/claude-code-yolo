@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2025-09-16
+
+### Added
+- GitHub Copilot authentication mode (`--auth-with copilot` / `--copilot`) with automatic proxy launch in local and YOLO runs.
+- Model auto-discovery from the Copilot proxy, with clear logging when defaults are injected.
+
+
 ## [0.5.1] - 2025-08-28
 
 ### Changed
