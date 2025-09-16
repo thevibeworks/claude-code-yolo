@@ -13,6 +13,17 @@
 - Minimal markdown markers, no unnecessary formatting, minimal emojis.
 - Reference issue numbers in the format `#<issue-number>` for easy linking.
 
+# [2025-09-16] Dev Log: Copilot API proxy integration
+- Why: Add first-class support for GitHub Copilot (`copilot-api`) as Anthropic-compatible backend for Claude Code (local + Docker), resilient behind proxies.
+- What:
+  - New `--auth-with copilot` mode: token validation (saved or `GH_TOKEN`/`GITHUB_TOKEN`), local proxy lifecycle management.
+  - Base URL wiring: local `ANTHROPIC_BASE_URL=http://localhost:4141`; Docker `http://host.docker.internal:4141` (+ entrypoint rewrite safety).
+  - Proxy bypass: set `NO_PROXY`/`no_grpc_proxy` to include `localhost,127.0.0.1,host.docker.internal` so 4141 calls skip HTTP/gRPC proxies.
+  - Model defaults: auto-detect from `/v1/models`; prefer `gpt-5-mini` for fast, fallback to `gpt-4o-mini`; main fallback `claude-sonnet-4`.
+  - Docker: auto-pick models from host proxy when unset; pass via `-e` to claude in container.
+- Result: Copilot proxy works reliably in both modes; sane defaults without manual env; no more proxy misroutes.
+
+
 # [2025-07-10] Dev Log: Complete namespace migration to thevibeworks
 - Why: Migrate from lroolle org to thevibeworks, shorten Docker image name for cleaner registry
 - What: Updated all references, Docker images, URLs across entire codebase, kept command name for backward compatibility

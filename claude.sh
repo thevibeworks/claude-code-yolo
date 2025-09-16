@@ -33,6 +33,7 @@ show_help() {
     echo "                              api-key   - Anthropic API key"
     echo "                              bedrock   - AWS Bedrock"
     echo "                              vertex    - Google Vertex AI"
+    echo "                              copilot   - GitHub Copilot proxy (requires subscription)"
     echo ""
     echo "  Auth flags (shortcuts):"
     echo "  --claude                    Use Claude app authentication"
@@ -40,6 +41,7 @@ show_help() {
     echo "  --api-key, -a               Use Anthropic API key"
     echo "  --bedrock, -b               Use AWS Bedrock"
     echo "  --vertex                    Use Google Vertex AI"
+    echo "  --copilot                   Use GitHub Copilot proxy"
     echo ""
     echo "Configuration Options:"
     echo "  --config DIR, -c DIR        Use custom Claude config home instead of ~/.claude"
@@ -93,9 +95,11 @@ show_help() {
     echo "  $0 --auth-with api-key                        # Use API key"
     echo "  $0 --auth-with bedrock                        # Use AWS Bedrock"
     echo "  $0 --auth-with vertex                         # Use Google Vertex AI"
+    echo "  $0 --auth-with copilot                        # Use GitHub Copilot proxy"
     echo "  $0 --yolo                                     # YOLO mode with default auth"
     echo "  $0 --yolo --auth-with oat -p 'prompt'         # YOLO mode with OAuth token (non-interactive)"
     echo "  $0 --yolo --auth-with bedrock                 # YOLO mode with Bedrock"
+    echo "  $0 --yolo --auth-with copilot                 # YOLO mode with GitHub Copilot"
     echo "  $0 --yolo -v ~/.ssh:/home/claude/.ssh:ro      # YOLO mode with volume mount"
     echo "  $0 --yolo -e NODE_ENV=dev -e DEBUG            # YOLO mode with env vars"
     echo "  $0 --config ~/work-claude --yolo              # YOLO mode with custom config home"
@@ -123,6 +127,53 @@ check_image() {
         echo "or pull it with: docker pull ${DOCKER_IMAGE}:${DOCKER_TAG}"
         exit 1
     fi
+}
+
+# Auto-pick Copilot models from /v1/models; fallback if unavailable
+pick_copilot_models() {
+    local base_url="${1:-http://localhost:4141}"
+    local models_json=""
+    local ids=""
+
+    if command -v curl >/dev/null 2>&1; then
+        models_json=$(curl -fsS --max-time 2 "$base_url/v1/models" 2>/dev/null || true)
+    fi
+
+    if [ -n "$models_json" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            ids=$(echo "$models_json" | jq -r '.data[].id' 2>/dev/null || echo "")
+        else
+            ids=$(echo "$models_json" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        fi
+    fi
+
+    local main="" fast=""
+    if [ -n "$ids" ]; then
+        for m in \
+            "claude-sonnet-4" \
+            "claude-3.7-sonnet" \
+            "claude-3.5-sonnet"
+        do
+            echo "$ids" | grep -qx "$m" && { main="$m"; break; }
+        done
+
+        for m in \
+            "gpt-5-mini" \
+            "gpt-4o-mini" \
+            "gpt-4o-mini-2024-07-18" \
+            "o4-mini" \
+            "o4-mini-2025-04-16" \
+            "o3-mini" \
+            "o3-mini-paygo" \
+            "grok-code-fast-1"
+        do
+            echo "$ids" | grep -qx "$m" && { fast="$m"; break; }
+        done
+    fi
+
+    [ -z "$main" ] && main="claude-sonnet-4"
+    [ -z "$fast" ] && fast="gpt-4o-mini"
+    echo "$main $fast"
 }
 
 convert_model_alias() {
@@ -205,6 +256,91 @@ convert_model_alias() {
     esac
 }
 
+# Copilot API proxy launcher (runs on host)
+start_copilot_proxy() {
+    if curl -s -f http://localhost:4141/ >/dev/null 2>&1; then
+        echo "GitHub Copilot proxy already running on port 4141"
+        return 0
+    fi
+
+    if command -v copilot-api >/dev/null 2>&1; then
+        local debug_output
+        debug_output=$(copilot-api debug 2>/dev/null || true)
+        echo "$debug_output" | grep -E "Token exists:|Version:|Logged in as" 2>/dev/null || true
+    fi
+
+    local cmd=(copilot-api start --port 4141)
+    if [ -f "$HOME/.local/share/copilot-api/github_token" ]; then
+        echo "Using saved GitHub token from copilot-api"
+    elif [ -n "${GH_TOKEN:-${GITHUB_TOKEN}}" ]; then
+        echo "Using provided GitHub token"
+        cmd+=(--github-token "${GH_TOKEN:-${GITHUB_TOKEN}}")
+    else
+        echo "error: No GitHub token found"
+        echo "Run: copilot-api auth"
+        echo "Or set: export GH_TOKEN=\$(gh auth token)"
+        exit 1
+    fi
+
+    local log_file="/tmp/copilot-api.$$.log"
+    echo "Starting GitHub Copilot API proxy..."
+    echo "Proxy logs: $log_file"
+    "${cmd[@]}" >"$log_file" 2>&1 &
+    local pid=$!
+
+    local max_attempts=30
+    local attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -s -f http://localhost:4141/ >/dev/null 2>&1; then
+            echo "✓ GitHub Copilot proxy ready on port 4141"
+            return 0
+        fi
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+
+    echo "error: GitHub Copilot proxy failed to start after ${max_attempts}s"
+    echo "Check logs: $log_file"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    exit 1
+}
+
+# Local mode dependency checking
+check_copilot_dependencies() {
+    if ! command -v node >/dev/null 2>&1; then
+        echo "error: Node.js not found. Required for --copilot mode."
+        echo "Install Node.js: https://nodejs.org/"
+        echo "Or use Docker mode: --yolo --copilot"
+        exit 1
+    fi
+
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "error: npm not found. Required for --copilot mode."
+        echo "Install npm with Node.js: https://nodejs.org/"
+        echo "Or use Docker mode: --yolo --copilot"
+        exit 1
+    fi
+
+    if ! command -v copilot-api >/dev/null 2>&1; then
+        echo "copilot-api not found. Installing..."
+        if ! npm install -g copilot-api@latest; then
+            echo "error: Failed to install copilot-api"
+            echo "Try manually: npm install -g copilot-api@latest"
+            echo "Or use Docker mode: --yolo --copilot"
+            exit 1
+        fi
+        echo "✓ copilot-api installed successfully"
+    fi
+
+    if ! copilot-api --help >/dev/null 2>&1; then
+        echo "error: copilot-api installation verification failed"
+        echo "Try reinstalling: npm install -g copilot-api@latest"
+        echo "Or use Docker mode: --yolo --copilot"
+        exit 1
+    fi
+}
+
 USE_TRACE=false
 VERBOSE=false
 CLAUDE_ARGS=()
@@ -218,6 +354,22 @@ SKIP_CONFIG=false
 QUIET=false
 DOCKER_ONLY_WARNINGS=()
 CONFIG_ERRORS=()
+
+user_specified_env() {
+    local target="$1"
+    local i=0
+    while [ $i -lt ${#EXTRA_ENV_VARS[@]} ]; do
+        if [ "${EXTRA_ENV_VARS[$i]}" = "-e" ]; then
+            local spec="${EXTRA_ENV_VARS[$((i+1))]}"
+            local name="${spec%%=*}"
+            [ "$name" = "$target" ] && return 0
+            i=$((i + 2))
+        else
+            i=$((i + 1))
+        fi
+    done
+    return 1
+}
 
 green() { echo -e "\033[32m$1\033[0m"; }
 yellow() { echo -e "\033[33m$1\033[0m"; }
@@ -338,7 +490,7 @@ validate_config_value() {
 
     case "$key" in
     AUTH_MODE)
-        [[ "$value" =~ ^(claude|oat|api-key|bedrock|vertex)$ ]] || {
+        [[ "$value" =~ ^(claude|oat|api-key|bedrock|vertex|copilot)$ ]] || {
             echo "Invalid AUTH_MODE: $value"
             return 1
         }
@@ -356,7 +508,7 @@ validate_config_value() {
 
 process_volume_config() {
     local value="$1"
-    
+
     value="${value//\"/}"
 
     if ! validate_config_value "VOLUME" "$value"; then
@@ -378,7 +530,7 @@ process_volume_config() {
 
 process_env_config() {
     local value="$1"
-    
+
     value="${value//\"/}"
 
     if ! validate_config_value "ENV" "$value"; then
@@ -577,13 +729,13 @@ while [ $i -lt ${#args[@]} ]; do
         if [ $((i + 1)) -lt ${#args[@]} ]; then
             next_arg="${args[$((i + 1))]}"
             case "$next_arg" in
-            claude | oat | api-key | bedrock | vertex)
+            claude | oat | api-key | bedrock | vertex | copilot)
                 AUTH_MODE="$next_arg"
                 i=$((i + 2))
                 ;;
             *)
                 echo "error: Invalid auth method: $next_arg" >&2
-                echo "Valid methods: claude, oat, api-key, bedrock, vertex" >&2
+                echo "Valid methods: claude, oat, api-key, bedrock, vertex, copilot" >&2
                 exit 1
                 ;;
             esac
@@ -610,6 +762,10 @@ while [ $i -lt ${#args[@]} ]; do
         ;;
     --vertex)
         AUTH_MODE="vertex"
+        i=$((i + 1))
+        ;;
+    --copilot)
+        AUTH_MODE="copilot"
         i=$((i + 1))
         ;;
     --config | -c)
@@ -679,22 +835,45 @@ while [ $i -lt ${#args[@]} ]; do
 done
 
 run_claude_local() {
-    CLAUDE_PATH="$HOME/.claude/local/node_modules/.bin/claude"
-    CLAUDE_TRACE_PATH="claude-trace"
+    CLAUDE_PATH=""
+    CLAUDE_TRACE_PATH=""
 
-    if [ ! -x "$CLAUDE_PATH" ]; then
-        echo "[claude.sh] error: Claude executable not found at: $CLAUDE_PATH" >&2
-        echo "[claude.sh] try running 'claude migrate-installer' to migrate claude to local" >&2
-        CLAUDE_FALLBACK="$HOME/.claude/local/claude"
-        if [ -x "$CLAUDE_FALLBACK" ]; then
-            echo "[claude.sh] trying fallback wrapper script: $CLAUDE_FALLBACK" >&2
-            CLAUDE_PATH="$CLAUDE_FALLBACK"
-        else
-            echo "[claude.sh] error: No Claude installation found" >&2
-            echo "[claude.sh] install Claude CLI first: https://claude.ai/cli" >&2
-            exit 1
+    # 1. Check if claude is in PATH (global install)
+    if command -v claude >/dev/null 2>&1; then
+        CLAUDE_PATH="claude"
+    # 2. Check local npm installation
+    elif [ -x "$HOME/.claude/local/node_modules/.bin/claude" ]; then
+        CLAUDE_PATH="$HOME/.claude/local/node_modules/.bin/claude"
+    # 3. Check fallback wrapper script
+    elif [ -x "$HOME/.claude/local/claude" ]; then
+        CLAUDE_PATH="$HOME/.claude/local/claude"
+    # 4. Check npm global prefix
+    elif command -v npm >/dev/null 2>&1; then
+        NPM_PREFIX=$(npm prefix -g 2>/dev/null || echo "")
+        if [ -n "$NPM_PREFIX" ] && [ -x "$NPM_PREFIX/bin/claude" ]; then
+            CLAUDE_PATH="$NPM_PREFIX/bin/claude"
         fi
     fi
+
+    if [ -z "$CLAUDE_PATH" ]; then
+        echo "[claude.sh] error: Claude CLI not found" >&2
+        echo "[claude.sh] install Claude CLI first: https://claude.ai/cli" >&2
+        echo "[claude.sh] or try: 'claude migrate-installer' to migrate to local" >&2
+        exit 1
+    fi
+
+    # Try to find claude-trace in similar order
+    if command -v claude-trace >/dev/null 2>&1; then
+        CLAUDE_TRACE_PATH="claude-trace"
+    elif command -v npm >/dev/null 2>&1; then
+        NPM_PREFIX=$(npm prefix -g 2>/dev/null || echo "")
+        if [ -n "$NPM_PREFIX" ] && [ -x "$NPM_PREFIX/bin/claude-trace" ]; then
+            CLAUDE_TRACE_PATH="$NPM_PREFIX/bin/claude-trace"
+        fi
+    fi
+
+    # Fallback to just "claude-trace" if not found but trace requested
+    [ -z "$CLAUDE_TRACE_PATH" ] && CLAUDE_TRACE_PATH="claude-trace"
 
     case "$AUTH_MODE" in
     "bedrock")
@@ -753,6 +932,44 @@ run_claude_local() {
         unset ANTHROPIC_API_KEY
         unset CLAUDE_CODE_USE_BEDROCK
         unset CLAUDE_CODE_USE_VERTEX
+        ;;
+    "copilot")
+        AUTH_STATUS="$(yellow 'COPILOT')"
+
+        if [ "$USE_DOCKER" != "true" ]; then
+            check_copilot_dependencies
+        fi
+
+        if [ ! -f "$HOME/.local/share/copilot-api/github_token" ] && [ -z "$GH_TOKEN" ] && [ -z "$GITHUB_TOKEN" ]; then
+            echo "error: No GitHub token found for --copilot mode."
+            echo "Options:"
+            echo "  1. Run: copilot-api auth"
+            echo "  2. Set: export GH_TOKEN=\$(gh auth token)"
+            echo "  3. Set: export GITHUB_TOKEN=your_github_token"
+            exit 1
+        fi
+
+        export ANTHROPIC_BASE_URL="http://localhost:4141"
+        export ANTHROPIC_API_KEY="dummy"
+
+        if [ -n "$NO_PROXY" ]; then
+            export NO_PROXY="$NO_PROXY,localhost,127.0.0.1"
+        else
+            export NO_PROXY="localhost,127.0.0.1"
+        fi
+        if [ -n "$no_grpc_proxy" ]; then
+            export no_grpc_proxy="$no_grpc_proxy,localhost,127.0.0.1"
+        else
+            export no_grpc_proxy="localhost,127.0.0.1"
+        fi
+
+        local _main_set_by_user="${ANTHROPIC_MODEL:+1}"
+        local _fast_set_by_user="${ANTHROPIC_SMALL_FAST_MODEL:+1}"
+        ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-sonnet-4}"
+        ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-gpt-4o-mini}"
+        export ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL
+
+        echo "GitHub Copilot proxy will start on port 4141"
         ;;
     *)
         AUTH_STATUS="$(green 'OAuth')"
@@ -839,6 +1056,25 @@ run_claude_local() {
 
     # Suppress Node.js experimental proxy warnings from Claude Code CLI
     export NODE_NO_WARNINGS=1
+
+    # Start copilot proxy if using copilot auth in local mode
+    if [ "$AUTH_MODE" = "copilot" ]; then
+        start_copilot_proxy
+
+        if [ -z "${_main_set_by_user:-}" ] || [ -z "${_fast_set_by_user:-}" ]; then
+            _picked_models=$(pick_copilot_models "$ANTHROPIC_BASE_URL")
+            _picked_main="${_picked_models%% *}"
+            _picked_fast="${_picked_models#* }"
+            if [ -z "${_main_set_by_user:-}" ] && [ -n "$_picked_main" ]; then
+                ANTHROPIC_MODEL="$_picked_main"
+            fi
+            if [ -z "${_fast_set_by_user:-}" ] && [ -n "$_picked_fast" ]; then
+                ANTHROPIC_SMALL_FAST_MODEL="$_picked_fast"
+            fi
+            export ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL
+            echo "Detected models: main=$ANTHROPIC_MODEL fast=$ANTHROPIC_SMALL_FAST_MODEL"
+        fi
+    fi
 
     if [ "$USE_TRACE" = true ]; then
         if command -v "$CLAUDE_TRACE_PATH" >/dev/null 2>&1; then
@@ -1171,6 +1407,64 @@ case "$AUTH_MODE" in
     [ -n "$ANTHROPIC_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=$ANTHROPIC_MODEL")
     [ -n "$ANTHROPIC_SMALL_FAST_MODEL" ] && DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=$ANTHROPIC_SMALL_FAST_MODEL")
     ;;
+"copilot")
+    if [ ! -f "$HOME/.local/share/copilot-api/github_token" ] && [ -z "$GH_TOKEN" ] && [ -z "$GITHUB_TOKEN" ]; then
+        echo "error: No GitHub token found for --copilot mode."
+        echo "Options:"
+        echo "  1. Run: copilot-api auth (on host)"
+        echo "  2. Set: export GH_TOKEN=\$(gh auth token)"
+        echo "  3. Set: export GITHUB_TOKEN=your_github_token"
+        exit 1
+    fi
+
+    unset ANTHROPIC_API_KEY
+    unset CLAUDE_CODE_USE_BEDROCK
+    unset CLAUDE_CODE_USE_VERTEX
+
+    if [ -z "$ANTHROPIC_MODEL" ] || [ -z "$ANTHROPIC_SMALL_FAST_MODEL" ]; then
+        _picked_models=$(pick_copilot_models "http://host.docker.internal:4141")
+        _picked_main="${_picked_models%% *}"
+        _picked_fast="${_picked_models#* }"
+        _picked_flag=false
+        if [ -z "$ANTHROPIC_MODEL" ] && [ -n "$_picked_main" ]; then
+            ANTHROPIC_MODEL="$_picked_main"
+            _picked_flag=true
+        fi
+        if [ -z "$ANTHROPIC_SMALL_FAST_MODEL" ] && [ -n "$_picked_fast" ]; then
+            ANTHROPIC_SMALL_FAST_MODEL="$_picked_fast"
+            _picked_flag=true
+        fi
+        if [ "$_picked_flag" = true ]; then
+            echo "Detected models (host proxy): main=$ANTHROPIC_MODEL fast=$ANTHROPIC_SMALL_FAST_MODEL"
+        fi
+    fi
+
+    COPILOT_NO_PROXY="${NO_PROXY:+$NO_PROXY,}host.docker.internal,localhost,127.0.0.1"
+    COPILOT_NO_GRPC_PROXY="${NO_GRPC_PROXY:+$NO_GRPC_PROXY,}host.docker.internal,localhost,127.0.0.1"
+
+    if ! user_specified_env "ANTHROPIC_BASE_URL"; then
+        DOCKER_ARGS+=("-e" "ANTHROPIC_BASE_URL=http://host.docker.internal:4141")
+    fi
+    if ! user_specified_env "ANTHROPIC_API_KEY"; then
+        DOCKER_ARGS+=("-e" "ANTHROPIC_API_KEY=dummy")
+    fi
+    if ! user_specified_env "NO_PROXY"; then
+        DOCKER_ARGS+=("-e" "NO_PROXY=$COPILOT_NO_PROXY")
+    fi
+    if ! user_specified_env "no_grpc_proxy"; then
+        DOCKER_ARGS+=("-e" "no_grpc_proxy=$COPILOT_NO_GRPC_PROXY")
+    fi
+    if ! user_specified_env "ANTHROPIC_MODEL"; then
+        DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4}")
+    fi
+    if ! user_specified_env "ANTHROPIC_SMALL_FAST_MODEL"; then
+        DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=${ANTHROPIC_SMALL_FAST_MODEL:-gpt-4o-mini}")
+    fi
+
+    if [ -d "$HOME/.local/share/copilot-api" ]; then
+        DOCKER_ARGS+=("-v" "$HOME/.local/share/copilot-api:/home/claude/.local/share/copilot-api")
+    fi
+    ;;
 *)
     unset ANTHROPIC_API_KEY
     unset CLAUDE_CODE_USE_BEDROCK
@@ -1220,6 +1514,7 @@ case "$AUTH_MODE" in
 "bedrock") AUTH_STATUS="$(yellow 'BEDROCK')" ;;
 "vertex") AUTH_STATUS="$(yellow 'VERTEX')" ;;
 "oat") AUTH_STATUS="$(yellow 'OAT')" ;;
+"copilot") AUTH_STATUS="$(yellow 'COPILOT')" ;;
 *) AUTH_STATUS="$(green 'OAuth')" ;;
 esac
 
@@ -1269,6 +1564,9 @@ case "$AUTH_MODE" in
 "vertex")
     [ -d "$HOME/.config/gcloud" ] && echo "      $(blue "$HOME/.config/gcloud:/home/claude/.config/gcloud") $(green '[gcloud]')"
     [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ] && [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ] && echo "      $(blue "$GOOGLE_APPLICATION_CREDENTIALS:$GOOGLE_APPLICATION_CREDENTIALS") $(green '[gcloud-creds]')"
+    ;;
+"copilot")
+    [ -d "$HOME/.local/share/copilot-api" ] && echo "      $(blue "$HOME/.local/share/copilot-api:/home/claude/.local/share/copilot-api") $(green '[copilot-token]')"
     ;;
 esac
 
@@ -1374,6 +1672,10 @@ blue '────────────────────────�
 echo ""
 
 DOCKER_ARGS+=("${DOCKER_IMAGE}:${DOCKER_TAG}")
+
+if [ "$AUTH_MODE" = "copilot" ]; then
+    start_copilot_proxy
+fi
 
 if [ "$OPEN_SHELL" = true ]; then
     DOCKER_ARGS+=("/bin/zsh")

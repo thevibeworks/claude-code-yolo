@@ -54,7 +54,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get -y clean && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm install -g npm@latest pnpm && \
+    npm install -g npm@latest pnpm copilot-api@latest && \
     npm cache clean --force
 
 RUN curl -fsSL https://bun.sh/install | bash && \
