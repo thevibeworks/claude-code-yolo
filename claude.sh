@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.5.1"
+VERSION="0.6.0"
 DOCKER_IMAGE="${CCYOLO_DOCKER_IMAGE:-ghcr.io/thevibeworks/ccyolo}"
 DOCKER_TAG="${CCYOLO_DOCKER_TAG:-latest}"
 
