@@ -243,7 +243,7 @@ make build
 ### Custom Claude Version
 
 ```bash
-make CLAUDE_CODE_VERSION=1.0.93 build  # Specific version
+make CLAUDE_CODE_VERSION=1.0.115 build  # Specific version
 make CLAUDE_CODE_VERSION=latest build  # Latest version
 ```
 

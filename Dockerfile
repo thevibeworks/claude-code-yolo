@@ -138,7 +138,7 @@ RUN mkdir -p "$CLAUDE_HOME/.npm-global" && \
 
 # Set npm configuration for claude user and install Claude CLI
 USER $CLAUDE_USER
-ARG CLAUDE_CODE_VERSION=1.0.95
+ARG CLAUDE_CODE_VERSION=1.0.115
 RUN npm config set prefix "$CLAUDE_HOME/.npm-global" && \
     npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @mariozechner/claude-trace && \
     npm cache clean --force
