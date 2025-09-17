@@ -1,11 +1,16 @@
 name: Claude Code
 
 on:
-  pull_request: [opened, reopened]
-  issue_comment: [created]
-  pull_request_review_comment: [created]
-  issues: [opened, assigned]
-  pull_request_review: [submitted]
+  pull_request:
+    types: [opened, reopened]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
   workflow_dispatch:
 
 concurrency:
@@ -38,34 +43,42 @@ jobs:
           token: ${{ steps.token.outputs.token }}
           fetch-depth: 0
 
-      - uses: thevibeworks/claude-code-action@allow-bot-actor
+      - uses: thevibeworks/claude-code-action@main
         if: github.event_name != 'pull_request' || (!contains(github.event.pull_request.title, '[skip-review]') && !contains(github.event.pull_request.title, '[WIP]'))
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          model: claude-sonnet-4-20250514
           github_token: ${{ steps.token.outputs.token }}
-          allowed_tools: "Bash(gh:*),Bash(git:*),Bash(docker:*),Bash(make:*),Bash(./claude.sh:*),Bash(./claudeb.sh:*),Bash(shellcheck:*)"
           allow_bot_actor: true
-          custom_instructions: |
-            You are a security-focused systems engineer maintaining claude-code-yolo, a Docker wrapper for Claude Code CLI that enables safe `--dangerously-skip-permissions` execution.
-
-            Your expertise covers:
-            - Bash/Docker containerized security patterns
-            - Multi-auth system implementation (OAuth, API, Bedrock, Vertex AI)
-            - Container escape vectors and privilege boundaries
-            - Shell injection patterns and input sanitization
-            - Linux-style development conventions
-
-            Context-aware behavior:
-            - **Pull Request Reviews**: Act as paranoid security engineer. Find vulnerabilities before they ship. Review priorities: container security, auth token handling, directory traversal, shell injection vectors, Dockerfile best practices, volume mounting security, cross-platform compatibility, bash scripting robustness, authentication implementations, installation script attack surfaces.
-            - **Issue/Comment Assistance**: Act as collaborative systems engineer. Help with development, testing, debugging, documentation.
-
-            Universal responsibilities:
-            - Prioritize security and safety in containerized environments
-            - Test changes across all authentication methods
-            - Follow Issue-Based Development workflow
-            - Check @workflows/ templates before git/gh operations
-            - Update docs when functionality changes
-            - Write minimal comments, let code be self-documenting
-            - Maintain Linus Torvalds directness and efficiency
-            - Any useless or duplicate comments = PR rejected
+          prompt: |
+            Security-focused systems engineer. Docker wrapper for Claude/Codex CLI with safe --dangerously-skip-permissions.
+            Core expertise: container security, auth vectors, shell injection, privilege boundaries.
+            Barkme when necessary.
+            **PR Reviews**: Paranoid security audit. Find vulnerabilities before ship.
+            **Issues/Comments**: Collaborative systems help.
+            Philosophy:
+            - Minimal comments; code + --help are docs
+            - Linux-style bluntness. Be clear. Be concise. No hand-holding.
+            - Fail fast and loud
+            - Security first
+            - Test all auth methods
+            - Follow @workflows/ templates for git/gh ops"
+          claude_args: |
+            --model claude-sonnet-4-20250514
+            --allowedTools Bash(gh:*),Bash(git:*),Bash(docker:*),Bash(make:*),Bash(./claude.sh:*),Bash(./claudeb.sh:*),Bash(shellcheck:*),mcp__barkme__notify
+            --mcp-config '{
+              "mcpServers": {
+                "barkme": {
+                  "command": "npx",
+                  "args": ["@vibeworks/barkme-mcp-server"],
+                  "env": {
+                    "LOG_LEVEL": "debug",
+                    "BARK_DEVICES": "${{ secrets.BARK_DEVICES }}",
+                    "BARK_SERVER": "${{ secrets.BARK_SERVER }}",
+                    "BARK_GROUP": "Claude YOLO",
+                    "BARK_ICON": "https://avatars.githubusercontent.com/in/1452392",
+                    "BARK_RETRY": "3",
+                    "BARK_ASYNC": "false"
+                  }
+                }
+              }
+            }'
