@@ -2,13 +2,13 @@ name: Claude Code
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, synchronize, ready_for_review, reopened]
   issue_comment:
     types: [created]
   pull_request_review_comment:
     types: [created]
   issues:
-    types: [opened, assigned]
+    types: [opened, assigned, labeled]
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
@@ -43,27 +43,34 @@ jobs:
           token: ${{ steps.token.outputs.token }}
           fetch-depth: 0
 
-      - uses: thevibeworks/claude-code-action@main
+      - name: Prepare Claude prompt
+        id: prepare_claude_prompt
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            PR_NUMBER="$(jq -r '.pull_request.number' "${GITHUB_EVENT_PATH}")"
+            {
+              printf 'prompt<<PROMPT\n'
+              printf 'REPO: %s\n' "${GITHUB_REPOSITORY}"
+              printf 'PR NUMBER: %s\n' "${PR_NUMBER}"
+              printf '\n'
+              printf '%s\n' "Perform a paranoid security audit of this pull request. Focus on container boundaries, authentication flows, shell entrypoints, privilege escalation, and permission bypasses. Enumerate blocking issues, high-risk findings, and required tests before merge."
+              printf 'PROMPT\n'
+            } >> "${GITHUB_OUTPUT}"
+          else
+            echo "prompt=" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - uses: anthropics/claude-code-action@v1
         if: github.event_name != 'pull_request' || (!contains(github.event.pull_request.title, '[skip-review]') && !contains(github.event.pull_request.title, '[WIP]'))
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.token.outputs.token }}
-          allow_bot_actor: true
-          prompt: |
-            Security-focused systems engineer. Docker wrapper for Claude/Codex CLI with safe --dangerously-skip-permissions.
-            Core expertise: container security, auth vectors, shell injection, privilege boundaries.
-            Barkme when necessary.
-            **PR Reviews**: Paranoid security audit. Find vulnerabilities before ship.
-            **Issues/Comments**: Collaborative systems help.
-            Philosophy:
-            - Minimal comments; code + --help are docs
-            - Linux-style bluntness. Be clear. Be concise. No hand-holding.
-            - Fail fast and loud
-            - Security first
-            - Test all auth methods
-            - Follow @workflows/ templates for git/gh ops"
+          track_progress: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
+          prompt: ${{ steps.prepare_claude_prompt.outputs.prompt }}
           claude_args: |
             --model claude-sonnet-4-20250514
+            --system-prompt "Security-focused systems engineer for Claude Code YOLO. Core expertise: container security, auth vectors, shell injection, privilege boundaries. Bark when necessary. PR reviews: paranoia to surface vulnerabilities before ship. Issues/comments: collaborative systems help. Philosophy: minimal comments; code + --help are docs; Linux-style bluntness; fail fast and loud; security first; test all auth methods; follow @workflows/ templates for git/gh ops."
             --allowedTools Bash(gh:*),Bash(git:*),Bash(docker:*),Bash(make:*),Bash(./claude.sh:*),Bash(./claudeb.sh:*),Bash(shellcheck:*),mcp__barkme__notify
             --mcp-config '{
               "mcpServers": {
