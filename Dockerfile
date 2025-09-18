@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.4
 
-# Claude Code YOLO - Docker Image
+# deva.sh - Docker Image
 # Provides a fully isolated Claude Code environment with sensible development tools
 
 FROM ubuntu:24.04 AS base
 
 LABEL maintainer="github.com/thevibeworks"
-LABEL org.opencontainers.image.title="ccyolo"
-LABEL org.opencontainers.image.description="Safe Claude Code CLI with full dev environment"
+LABEL org.opencontainers.image.title="deva"
+LABEL org.opencontainers.image.description="Containerized development environment for Claude Code, Codex, and AI coding tools"
 LABEL org.opencontainers.image.licenses="MIT"
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -119,44 +119,45 @@ ENV NPM_CONFIG_FETCH_RETRIES=5 \
 # Final stage with shell setup
 FROM tools AS final
 
-# Create non-root user for Claude execution
+# Create non-root user for agent execution
 # Using 1001 as default to avoid conflicts with ubuntu user (usually 1000)
-ENV CLAUDE_USER=claude \
-    CLAUDE_UID=1001 \
-    CLAUDE_GID=1001 \
-    CLAUDE_HOME=/home/claude
+ENV DEVA_USER=deva \
+    DEVA_UID=1001 \
+    DEVA_GID=1001 \
+    DEVA_HOME=/home/deva
 
-RUN groupadd -g "$CLAUDE_GID" "$CLAUDE_USER" && \
-    useradd -u "$CLAUDE_UID" -g "$CLAUDE_GID" -m -s /bin/zsh "$CLAUDE_USER" && \
-    # Allow claude user to run sudo without password for development convenience
-    echo "$CLAUDE_USER ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$CLAUDE_USER" && \
-    chmod 440 "/etc/sudoers.d/$CLAUDE_USER"
+RUN groupadd -g "$DEVA_GID" "$DEVA_USER" && \
+    useradd -u "$DEVA_UID" -g "$DEVA_GID" -m -s /bin/zsh "$DEVA_USER" && \
+    # Allow deva user to run sudo without password for development convenience
+    echo "$DEVA_USER ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$DEVA_USER" && \
+    chmod 440 "/etc/sudoers.d/$DEVA_USER"
 
-# Configure npm-global directory for claude user
-RUN mkdir -p "$CLAUDE_HOME/.npm-global" && \
-    chown -R "$CLAUDE_UID:$CLAUDE_GID" "$CLAUDE_HOME/.npm-global"
+# Configure npm-global directory for deva user
+RUN mkdir -p "$DEVA_HOME/.npm-global" && \
+    chown -R "$DEVA_UID:$DEVA_GID" "$DEVA_HOME/.npm-global"
 
-# Set npm configuration for claude user and install Claude CLI
-USER $CLAUDE_USER
+# Set npm configuration for deva user and install CLI tooling
+USER $DEVA_USER
 ARG CLAUDE_CODE_VERSION=1.0.115
-RUN npm config set prefix "$CLAUDE_HOME/.npm-global" && \
-    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @mariozechner/claude-trace && \
+ARG CODEX_VERSION=0.36.0
+RUN npm config set prefix "$DEVA_HOME/.npm-global" && \
+    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @mariozechner/claude-trace @openai/codex@${CODEX_VERSION} && \
     npm cache clean --force
 
 # Install Go tools for Atlassian integration (Confluence/Jira/Bitbucket)
 RUN go install github.com/lroolle/atlas-cli/cmd/atl@main && \
     sudo mv $HOME/go/bin/atl /usr/local/bin/
 
-RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh "$CLAUDE_HOME/.oh-my-zsh" && \
-    git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$CLAUDE_HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" && \
-    git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git "$CLAUDE_HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh "$DEVA_HOME/.oh-my-zsh" && \
+    git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$DEVA_HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" && \
+    git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git "$DEVA_HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
 
-# Create .zshrc for claude user
-RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > "$CLAUDE_HOME/.zshrc" && \
-    echo 'ZSH_THEME="robbyrussell"' >> "$CLAUDE_HOME/.zshrc" && \
-    echo 'plugins=(git docker python golang node npm aws zsh-autosuggestions zsh-syntax-highlighting)' >> "$CLAUDE_HOME/.zshrc" && \
-    echo 'source $ZSH/oh-my-zsh.sh' >> "$CLAUDE_HOME/.zshrc" && \
-    echo 'export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/go/bin:/usr/local/go/bin:$PATH' >> "$CLAUDE_HOME/.zshrc"
+# Create .zshrc for deva user
+RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > "$DEVA_HOME/.zshrc" && \
+    echo 'ZSH_THEME="robbyrussell"' >> "$DEVA_HOME/.zshrc" && \
+    echo 'plugins=(git docker python golang node npm aws zsh-autosuggestions zsh-syntax-highlighting)' >> "$DEVA_HOME/.zshrc" && \
+    echo 'source $ZSH/oh-my-zsh.sh' >> "$DEVA_HOME/.zshrc" && \
+    echo 'export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/go/bin:/usr/local/go/bin:$PATH' >> "$DEVA_HOME/.zshrc"
 
 USER root
 

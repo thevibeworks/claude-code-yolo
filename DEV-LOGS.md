@@ -13,6 +13,18 @@
 - Minimal markdown markers, no unnecessary formatting, minimal emojis.
 - Reference issue numbers in the format `#<issue-number>` for easy linking.
 
+# [2025-09-18] Dev Log: Complete rebrand to deva.sh multi-agent wrapper
+- Why: Transform claude-code-yolo from Claude-specific wrapper into unified multi-agent wrapper per #98. Enable Codex integration without breaking existing YOLO ergonomics.
+- What: **COMPREHENSIVE REFACTOR**
+  - **Architecture**: Built pluggable agent system with `agents/claude.sh` and `agents/codex.sh` modules, unified dispatcher `deva.sh`
+  - **Container Management**: Project-scoped containers (`deva-<agent>-<project>-<pid>`), `--ps`/`--inspect`/`shell` commands with fzf picker
+  - **Config Evolution**: `--config-home`/`-H` mounts entire auth homes (`.claude`, `.codex`) to `/home/deva`, new `.deva*` config files with `.claude-yolo*` back-compat
+  - **Agent Safety**: Auto-inject safety flags (`--dangerously-skip-permissions` for Claude, `--dangerously-bypass-approvals-and-sandbox` for Codex)
+  - **OAuth Protection**: Strip conflicting `OPENAI_*` env vars when `.codex/auth.json` is mounted to preserve OAuth sessions
+  - **Backward Compatibility**: `claude-yolo` → `deva.sh claude` shim, deprecation warnings for `claude.sh`/`claudeb.sh`
+  - **Documentation**: Complete rewrite of README, CHANGELOG, install scripts to reflect deva.sh-first workflow
+- Result: **MAJOR VERSION** - claude-code-yolo is now "deva.sh Multi-Agent Wrapper". All legacy functionality preserved via shims, new multi-agent capabilities unlocked, Codex OAuth stable.
+
 # [2025-09-16] Dev Log: Copilot API proxy integration
 - Why: Add first-class support for GitHub Copilot (`copilot-api`) as Anthropic-compatible backend for Claude Code (local + Docker), resilient behind proxies.
 - What:

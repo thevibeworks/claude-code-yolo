@@ -2,7 +2,7 @@
 set -e
 
 VERSION="0.6.0"
-DOCKER_IMAGE="${CCYOLO_DOCKER_IMAGE:-ghcr.io/thevibeworks/ccyolo}"
+DOCKER_IMAGE="${DEVA_DOCKER_IMAGE:-ghcr.io/thevibeworks/deva}"
 DOCKER_TAG="${CCYOLO_DOCKER_TAG:-latest}"
 
 DEFAULT_ANTHROPIC_MODEL="sonnet-4"
@@ -1164,7 +1164,7 @@ check_image
 CURRENT_DIR="$(pwd)"
 CURRENT_DIR_BASENAME="$(basename "$CURRENT_DIR")"
 
-CONTAINER_NAME="ccyolo-${CURRENT_DIR_BASENAME}-$$"
+CONTAINER_NAME="deva-${CURRENT_DIR_BASENAME}-$$"
 
 DOCKER_ARGS=(
     "run"
