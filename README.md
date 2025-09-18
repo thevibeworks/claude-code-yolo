@@ -1,255 +1,251 @@
-# Claude Code YOLO
+# deva.sh Multi-Agent Wrapper
 
-Docker-based Claude Code CLI with full development capabilities and host isolation.
+> **REBRANDED**: Claude Code YOLO → **deva.sh Multi-Agent Wrapper**
+> We've evolved from a Claude-specific wrapper into a unified development environment supporting Claude Code, OpenAI Codex, and future coding agents.
+
+deva.sh launches Claude Code, Codex, and future coding agents inside a Docker container with **full control** over mounts, environments, and authentication contexts.
+
+**Key Features**:
+- **Advanced Directory Access**: Beyond Claude's `--add-dir` - mount any directories with precise permissions (`-v`)
+- **Multiple Config Homes**: Isolated auth contexts with `--config-home` for different accounts/orgs
+- **Multi-Auth Support**: OAuth, API keys, Bedrock, Vertex, Copilot - all in one wrapper
+- **Safe Dangerous Mode**: Full permissions inside containers, zero host risk
+
+**What Changed**: `claude.sh` → `deva.sh` as the primary interface. Your existing `claude-yolo` commands still work via compatibility shims.
 
 ## Quick Start
 
 ```bash
-# One-line install
+# install the CLI wrapper
 curl -fsSL https://raw.githubusercontent.com/thevibeworks/claude-code-yolo/main/install.sh | bash
 
+# run from a project directory
+cd ~/wrk/my-project
+
+deva.sh               # Claude by default
+
+deva.sh codex -- --help   # Codex CLI passthrough
 ```
 
+`claude-yolo` simply calls `deva.sh claude` for backwards compatibility.
+
+> **Note**
+> The older `claude.sh` / `claudeb.sh` wrappers are deprecated and now print a reminder before forwarding to `deva.sh`.
+
+## Multi-Agent Capabilities
+
+**Supported Agents**:
+- **Claude Code** (`deva.sh claude`) - Anthropic's Claude with Code capabilities, auto-adds `--dangerously-skip-permissions`
+- **OpenAI Codex** (`deva.sh codex`) - OpenAI's Codex CLI, auto-adds `--dangerously-bypass-approvals-and-sandbox`
+
+**Agent-Specific Features**:
+- **Claude**: OAuth/API key auth, mounts `~/.claude`, project-specific `.claude` configs
+- **Codex**: OAuth protection (strips conflicting `OPENAI_*` env vars), exposes port 1455, mounts `~/.codex`
+
+**Shared Infrastructure**:
+- Project-scoped containers (`deva-<agent>-<project>-<pid>`)
+- Unified config system (`.deva*` files)
+- Container management (`--ps`, `--inspect`, `shell`)
+
+## Safety Checklist
+
+- Always `cd` into the project root before launching; deva.sh mounts the working directory recursively.
+- Never aim `--config-home` at your real `$HOME`; use a dedicated auth directory.
+- Use `deva.sh --ps` to confirm which containers are running before attaching.
+
+## Advanced Directory Access (Beyond `--add-dir`)
+
+**Claude's `--add-dir` vs deva.sh's Military-Grade Control**:
 
 ```bash
-# Navigate to your project and run
-cd ~/projects/my-project
-claude-yolo
+# Claude built-in: Dangerous direct filesystem access
+claude --add-dir ~/projects/backend --add-dir ~/shared-libs
+# ❌ Claude can read/write EVERYTHING in those directories
+# ❌ No permission control
+# ❌ Direct access to your real files
+# ❌ Can accidentally modify/delete host files
+
+# deva.sh: Fortress-level security with surgical precision
+deva.sh claude \
+  -v ~/projects/backend:/home/deva/backend:ro \      # READ-ONLY
+  -v ~/shared-libs:/home/deva/libs:ro \              # READ-ONLY
+  -v ~/api-keys:/home/deva/secrets:ro \              # READ-ONLY SECRETS
+  -v /tmp/build-output:/home/deva/output:rw          # ONLY writable area
+# ✅ Granular per-directory permissions
+# ✅ Container isolation = zero host risk
+# ✅ Secrets are read-only, impossible to leak
+# ✅ Only designated output dir is writable
 ```
 
-## ⚠️ CRITICAL SAFETY WARNING
+**Why deva.sh's Volume Mounting is Vastly More Secure & Controllable**:
+- **Granular Permissions**: Per-directory read-only (`ro`) vs read-write (`rw`) vs no access
+- **Complete Isolation**: Claude never touches your real filesystem - only container copies
+- **Selective Exposure**: Choose exactly which files/dirs are visible, hide everything else
+- **Path Remapping**: Control exactly where files appear in container (`/home/deva/project` vs `~/my-secret-project`)
+- **Zero Host Risk**: Even with `--dangerously-skip-permissions`, your host filesystem is protected
+- **Credential Sandboxing**: Mount secrets read-only, impossible for Claude to modify/leak them
+- **Audit Trail**: Docker logs every file access, unlike native `--add-dir`
+- **Performance**: Docker volume caching + no host filesystem traversal
 
-Claude will have **FULL ACCESS** to the current workspace and ALL subdirectories.
-
-Always `cd` to a specific project directory first!
-
-**NEVER run `--yolo` mode in:**
-- Your home directory (`$HOME`)
-- System directories (`/`, `/etc`, `/usr`, etc.)
-- Any directory containing sensitive data
-
-
-## How It Works
-
-Claude Code YOLO solves the permission friction of Claude CLI by running it inside a Docker container with `--dangerously-skip-permissions`. Here's how:
-
-1. **Container Isolation**: Claude runs in a Docker container, not on your host system
-2. **Directory Mounting**: Only your current directory is mounted into the container
-3. **Authentication Passthrough**: Your credentials (`~/.claude`, `~/.aws`, etc.) are securely mounted
-4. **Non-root Execution**: Runs as a non-root user inside container with UID/GID mapping
-5. **Safety Checks**: Warns before running in dangerous directories like `$HOME`
-
-**Container Info**: Claude runs as `claude` user in `/home/claude/` (not root). Mount configs to `/home/claude/` paths.
-
-This gives you full Claude Code power without compromising your system security.
-
-## Usage
-
-The installer provides two commands:
-- `claude-yolo` - Quick alias for YOLO mode (recommended)
-- `claude.sh` - Full wrapper with all options
-
+**Real-World Security Scenarios**:
 ```bash
-# YOLO mode (Docker) - recommended
-claude-yolo                         # Run in current directory
+# MAXIMUM SECURITY: Code review with zero risk
+deva.sh claude \
+  -v ~/client-project:/home/deva/code:ro \          # REVIEW ONLY
+  -v ~/api-keys:/home/deva/keys:ro \                # SECRETS READ-ONLY
+  -v /tmp/review-output:/home/deva/output:rw        # SAFE OUTPUT AREA
+# Claude can analyze code but CANNOT modify source or leak secrets
 
-# Using claude.sh for more control
-claude.sh --yolo                    # YOLO mode
-claude.sh                           # Local mode (no Docker)
-claude.sh --auth-with oat -p "prompt" # Use OAuth token (experimental, non-interactive)
-claude.sh --auth-with api-key       # Use API key(may have to rerun `/login`)
-claude.sh --auth-with bedrock       # Use AWS Bedrock
-claude.sh --auth-with vertex        # Use Google Vertex AI
-claude.sh --shell                   # Open shell in container
-claude.sh --host-net                # Host networking (Linux only)
-claude.sh --help                    # Show all options
+# SURGICAL ACCESS: Database migration with controlled risk
+deva.sh claude \
+  -v ~/migrations:/home/deva/migrations:ro \        # SCRIPTS READ-ONLY
+  -v ~/.db-config:/home/deva/config:ro \            # CONFIG READ-ONLY
+  -v /tmp/migration-logs:/home/deva/logs:rw         # LOGS ONLY
+# Claude can read configs but CANNOT modify production scripts
+
+# CREDENTIAL FORTRESS: API development with bulletproof secrets
+deva.sh claude \
+  -v ~/project/src:/home/deva/src:rw \              # CODE ACCESS
+  -v ~/.aws:/home/deva/.aws:ro \                    # AWS CREDS READ-ONLY
+  -v ~/api-keys:/home/deva/keys:ro \                # API KEYS READ-ONLY
+  -v /tmp/build:/home/deva/build:rw                 # BUILD OUTPUT ONLY
+# Impossible for Claude to accidentally commit secrets or modify credentials
+
+# Compare with dangerous --add-dir approach:
+# claude --add-dir ~/project --add-dir ~/.aws --add-dir ~/api-keys
+# ❌ Claude has FULL WRITE ACCESS to ALL your secrets!
 ```
 
-## Authentication Methods
-
-- **Claude App** (default): Uses `~/.claude` OAuth - `--auth-with claude`
-  - Run `/login` in claude-code, open the oauth link, then paste the code back in the terminal
-- **OAuth Token**: Uses `CLAUDE_CODE_OAUTH_TOKEN` environment variable - `--auth-with oat` **[EXPERIMENTAL]**
-  - Generate with `claude setup-token`, requires context files for Claude history
-  - **Limitation**: Only works with `-p` flag (non-interactive mode)
-- **API Key**: Set `ANTHROPIC_API_KEY` environment variable - `--auth-with api-key`
-  - If OAuth exists, use `/login` in Claude to switch to API key auth
-- **AWS Bedrock**: Uses `~/.aws` credentials - `--auth-with bedrock`
-- **Google Vertex**: Uses `~/.config/gcloud` credentials - `--auth-with vertex`
-
-### Custom Configuration Directory
-
-Use a custom Claude config home instead of the default `~/.claude` and `~/.claude.json`:
-
+**Multiple Config Homes for Isolated Auth**:
 ```bash
-# Use custom config directory home, should contains both ~/.claude.json and ~/.claude
-claude-yolo --config ~/work-claude
+# Personal Claude account
+deva.sh claude -H ~/auth-homes/personal
+
+# Work Claude account
+deva.sh claude -H ~/auth-homes/work-claude
+
+# Production Codex account
+deva.sh codex -H ~/auth-homes/codex-prod -- -m gpt-5-codex
+
+# Client project with Bedrock
+deva.sh claude -H ~/auth-homes/client-aws --auth-with bedrock
 ```
 
-This is useful for:
-- Separate auth sessions for different projects
-- Isolating Claude configurations
-
-### OAuth Token Setup **[EXPERIMENTAL]**
-
-For token-based authentication (with limitations):
-
+**Container Management**:
 ```bash
-# Generate OAuth token (run locally)
-claude setup-token
+# List all running containers for this project
+% deva.sh --ps
+NAME                                  AGENT  STATUS         CREATED AT
+deva-claude-my-project-12345          claude Up 2 minutes   2025-09-18 18:10:02 +0000 UTC
+deva-codex-my-project-67890           codex  Up 5 minutes   2025-09-18 18:07:15 +0000 UTC
 
-# Set token and use (NON-INTERACTIVE ONLY)
-export CLAUDE_CODE_OAUTH_TOKEN="your_token_here"
-claude.sh --oat -p "your prompt"            # Local mode with token
-claude.sh --yolo --oat -p "your prompt"     # YOLO mode with token
-
-# Or inline
-CLAUDE_CODE_OAUTH_TOKEN="your_token" claude.sh --oat -p "your prompt"
+# Attach to any container (fzf picker if multiple)
+deva.sh --inspect
+deva.sh shell        # alias for --inspect
 ```
 
-**Current Limitations**:
-- Only works with `-p` flag (non-interactive mode)
-- Interactive mode not supported (claude CLI limitation)
+## Multi-Account Auth Architecture
 
-**Use Cases**:
-- CI/CD automation with specific prompts
-- Scripted Claude interactions
-- Non-interactive batch processing
+**Config Home Structure** (`--config-home DIR` / `-H DIR`):
 
-## GitHub CLI Authentication
-
-For GitHub operations (creating PRs, managing repos), set the `GH_TOKEN` environment variable:
+deva.sh mounts entire auth directories into `/home/deva`, enabling **isolated authentication contexts** for different accounts, organizations, or projects.
 
 ```bash
-# Set your GitHub token
-export GH_TOKEN="ghp_xxxxxxxxxxxx"
+# Organize by account type
+~/auth-homes/
+├── personal/           # Personal accounts
+│   ├── .claude/
+│   ├── .claude.json
+│   └── .config/gcloud/
+├── work-corp/          # Corporate accounts
+│   ├── .claude/        # Work Claude Pro
+│   ├── .aws/           # AWS Bedrock access
+│   └── .codex/         # OpenAI org license
+└── client-proj/        # Client-specific
+    ├── .claude/        # Client Claude account
+    └── .aws/           # Client AWS Bedrock
 
-# Now gh commands work in containers
-claude-yolo
-# Inside container: gh pr create, gh issue list, etc.
+# Use different auth contexts seamlessly
+deva.sh claude -H ~/auth-homes/personal
+deva.sh claude -H ~/auth-homes/work-corp --auth-with bedrock
+deva.sh codex -H ~/auth-homes/work-corp
 ```
 
-**Note**: This avoids mounting `~/.config/gh/` which fails due to secure keyring storage in modern GitHub CLI versions.
+**Auth Protection**: When `.codex/auth.json` is mounted, deva.sh strips conflicting `OPENAI_*` env vars to ensure OAuth sessions aren't shadowed by stale API credentials.
 
-## Configuration Files
+## Container Management
 
-Claude YOLO supports configuration files to persist your volume mounts, environment variables, and settings. Following the XDG Base Directory specification:
+- `deva.sh --ps` – list `deva-*` containers scoped to the current project (includes inferred agent column).
+- `deva.sh --inspect` / `deva.sh shell` – attach to a running container (`fzf` picker if more than one, otherwise auto-attach).
+
+Container naming pattern: `deva-<agent>-<project>-<pid>`.
+
+## Config Files
+
+We load configuration in this order (later wins):
+
+1. `$XDG_CONFIG_HOME/deva/.deva`
+2. `$HOME/.deva`
+3. `.deva`
+4. `.deva.local`
+5. Legacy `.claude-yolo*` files (still honoured for compatibility)
+
+Example `.deva` file:
 
 ```bash
-# Configuration files are loaded in order (later files override earlier):
-1. $XDG_CONFIG_HOME/claude-yolo/.claude-yolo   # Global config (default: ~/.config/claude-yolo/.claude-yolo)
-2. ~/.claude-yolo                        # Legacy global location
-3. .claude-yolo                          # Project-specific config
-4. .claude-yolo.local                    # Local overrides (gitignored)
-```
-
-Example `.claude-yolo` file:
-```bash
-# Git integration - mount to claude user's home
-VOLUME=~/.ssh:/home/claude/.ssh:ro
-VOLUME=~/.gitconfig:/home/claude/.gitconfig:ro
-
-# Environment settings with expansion support
-ENV=NODE_ENV=${NODE_ENV:-development}
-ENV=DEBUG=myapp:*
-
-# Pass through host env (either form works)
+VOLUME=~/.ssh:/home/deva/.ssh:ro
+VOLUME=~/.gitconfig:/home/deva/.gitconfig:ro
+ENV=DEBUG=${DEBUG:-development}
 ENV=GH_TOKEN
-ENV=${GH_TOKEN}
-
-# Claude settings
-ANTHROPIC_MODEL=sonnet-4
-USE_TRACE=true
+CONFIG_HOME=~/auth-homes/claude-max
+DEFAULT_AGENT=claude
+HOST_NET=false
 ```
 
-See `.claude-yolo.example` and `.claude-yolo.full` for more examples.
+Supported keys: `VOLUME`, `ENV`, `CONFIG_HOME`, `DEFAULT_AGENT`, `HOST_NET`, plus any valid shell variable names you want exported.
 
-### Security Features
+## Flexible Authentication Matrix
 
-Configuration files include security protections:
-- **Path Traversal Prevention**: Blocks dangerous paths like `../../`
-- **Command Injection Protection**: Only allows safe variable expansion
-- **Sensitive Value Masking**: API keys, tokens, and secrets are masked in output (e.g., `API_KEY=sk-a***key`)
-- **Input Validation**: Environment variable names and values are validated
+**All Authentication Methods Supported**:
 
-## Custom Volume Mounting
+| Agent | Auth Method | Command Example | Auth Context |
+|-------|-------------|-----------------|--------------|
+| **Claude** | OAuth | `deva.sh claude -H ~/auth-homes/personal` | `.claude/`, `.claude.json` |
+| **Claude** | API Key | `deva.sh claude --auth-with api-key` | `ANTHROPIC_API_KEY` |
+| **Claude** | Bedrock | `deva.sh claude -H ~/auth-homes/aws --auth-with bedrock` | `.aws/` credentials |
+| **Claude** | Vertex AI | `deva.sh claude -H ~/auth-homes/gcp --auth-with vertex` | `.config/gcloud/` |
+| **Claude** | Copilot | `deva.sh claude --auth-with copilot` | GitHub token via copilot-api |
+| **Claude** | OAuth Token | `deva.sh claude --auth-with oat -p "task"` | `CLAUDE_CODE_OAUTH_TOKEN` |
+| **Codex** | OAuth | `deva.sh codex -H ~/auth-homes/openai` | `.codex/auth.json` |
 
-You can mount additional configuration files or directories using the `-v` flag:
+**Multi-Org Support Examples**:
+```bash
+# Personal dev work
+deva.sh claude -H ~/auth-homes/personal
+
+# Corporate Bedrock account
+deva.sh claude -H ~/auth-homes/corp-aws --auth-with bedrock
+
+# Client project with their OpenAI license
+deva.sh codex -H ~/auth-homes/client-openai
+
+# Quick API key for testing
+ANTHROPIC_API_KEY=sk-... deva.sh claude --auth-with api-key -p "test this"
+```
+
+## Image Contents
+
+- Languages: Python 3.12, Node.js 22, Go 1.22, Rust.
+- Tooling: git, gh, docker CLI, awscli, bun, uv, ripgrep, shellcheck, claude-trace, codex CLI, etc.
+- User: non-root `deva` with host UID/GID mirroring.
+- Networking: `localhost` → `host.docker.internal` rewrites for HTTP/HTTPS/gRPC.
+
+## Developer Notes
 
 ```bash
-# Mount Git configuration to claude user's home
-claude-yolo -v ~/.gitconfig:/home/claude/.gitconfig:ro
-
-# Mount SSH keys (read-only)
-claude-yolo -v ~/.ssh:/home/claude/.ssh:ro
-
-# Resume with SSH keys and tracing enabled
-claude-yolo -v ~/.ssh:/home/claude/.ssh:ro --trace --continue
-
-# Multiple mounts
-claude-yolo -v ~/tools:/tools -v ~/data:/data
-
-# Mount custom tool configs to claude user paths
-claude-yolo -v ~/.config/gh:/home/claude/.config/gh:ro
-claude-yolo -v ~/.terraform.d:/home/claude/.terraform.d:ro
+make build           # build the deva image locally
+make shell           # open an interactive shell inside the image
+./deva.sh --help     # list all options
 ```
 
-**Note**: Mount personal configs to `/home/claude/` paths since Claude Code runs as the `claude` user, not root.
-
-## Key Features
-
-- **Full Dev Environment**: Python, Node.js, Go, Rust, and common tools pre-installed
-- **Proxy Support**: Automatic `localhost` → `host.docker.internal` translation
-- **Model Selection**: Use any Claude model via `ANTHROPIC_MODEL` env var
-- **Request Tracing**: Debug with `--trace` flag using claude-trace
-- **Security-First**: Sensitive environment variable masking and path validation
-- **Environment Expansion**: Support for `${VAR:-default}` syntax in config files
-- **Docker Socket**: Optional mounting with `CCYOLO_DOCKER_SOCKET=true`
-
-
-### Request Tracing by @badlogic `claude-trace`
-
-Claude Code YOLO integrates with [claude-trace](https://github.com/badlogic/lemmy/tree/main/apps/claude-trace) for detailed request logging and debugging.
-
-## Docker Images
-
-Claude Code YOLO is available from multiple container registries:
-
-```bash
-# GitHub Container Registry (recommended, primary)
-docker pull ghcr.io/thevibeworks/ccyolo:latest
-
-# Docker Hub (fallback)
-docker pull thevibeworks/ccyolo:latest
-
-# Use specific registry
-CCYOLO_DOCKER_IMAGE=thevibeworks/ccyolo claude-yolo
-```
-
-## Manual Setup
-
-```bash
-# Clone repository
-git clone https://github.com/thevibeworks/claude-code-yolo.git
-cd claude-code-yolo
-
-# Build from source (optional)
-make build
-
-# Run directly
-./claude.sh --yolo
-```
-
-### Custom Claude Version
-
-```bash
-make CLAUDE_CODE_VERSION=1.0.115 build  # Specific version
-make CLAUDE_CODE_VERSION=latest build  # Latest version
-```
-
-## Inspired by
-
-- **[anthropics/claude-code](https://github.com/anthropics/claude-code)** - Official Claude Code CLI
-- **[meal/claude-code-cli](https://github.com/meal/claude-code-cli)** - Containerized Claude Code with ready-to-use Docker setup
-- **[gagarinyury/claude-code-root-runner](https://github.com/gagarinyury/claude-code-root-runner)** - Root privilege bypass for Claude Code using temporary users
-- **[textcortex/claude-code-sandbox](https://github.com/textcortex/claude-code-sandbox)** - Full sandbox environment with web UI and autonomous workflows
+See `CHANGELOG.md` and `DEV-LOGS.md` in this directory for history and daily notes.
