@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-alpha] - 2025-09-18 🔄 **BREAKING: MAJOR REBRAND & REFACTOR**
+
+**Claude Code YOLO → deva.sh Multi-Agent Wrapper**
+
+This release transforms claude-code-yolo from a Claude-specific wrapper into **deva.sh** - a unified multi-agent wrapper supporting Claude Code, OpenAI Codex, and future coding agents.
+
+### Added
+- **Multi-Agent Architecture**: Pluggable agent system with `agents/claude.sh` and `agents/codex.sh` modules
+- **Unified Dispatcher**: `deva.sh` as the main entry point with agent selection via first argument (`deva.sh codex`)
+- **Project-Scoped Container Management**:
+  - `deva.sh --ps` lists all deva containers for current project
+  - `deva.sh --inspect` / `deva.sh shell` with fzf picker for multi-container attach
+  - Container naming: `deva-<agent>-<project>-<pid>`
+- **Enhanced Config System**:
+  - `--config-home` / `-H` mounts entire auth directories (`.claude`, `.codex`) into `/home/deva`
+  - New `.deva` / `.deva.local` config files with legacy `.claude-yolo*` support
+  - `CONFIG_HOME` environment propagation to agents
+- **Agent-Specific Safety**: Auto-injection of safety flags (`--dangerously-skip-permissions` for Claude, `--dangerously-bypass-approvals-and-sandbox` for Codex)
+- **Codex OAuth Protection**: Strips conflicting `OPENAI_*` env vars when `.codex/auth.json` is mounted
+
+### Changed
+- **BREAKING**: `deva.sh` replaces `claude.sh` as the primary interface
+- **BREAKING**: Docker image changed to `ghcr.io/thevibeworks/deva` (was `ghcr.io/thevibeworks/ccyolo`)
+- **BREAKING**: Container user path changed from `/root` to `/home/deva`
+- **Backward Compatibility**: `claude-yolo` → `deva.sh claude` shim maintained
+- **Deprecation Warnings**: `claude.sh` and `claudeb.sh` now warn before forwarding to `deva.sh`
+
+### Migration Guide
+```bash
+# Old workflow
+claude.sh --yolo -v ~/.ssh:/root/.ssh:ro
+
+# New workflow
+deva.sh claude -v ~/.ssh:/home/deva/.ssh:ro
+
+# Or use the shim (warns but works)
+claude-yolo -v ~/.ssh:/home/deva/.ssh:ro
+```
+
+This release implements the complete vision from #98 - a Docker-first multi-agent wrapper that preserves YOLO ergonomics while enabling polyglot AI toolchains.
+
+**Why v1.0.0?** This represents a fundamental architectural shift that establishes our stable multi-agent API. The alpha tag reflects ongoing development in the codex worktree before mainline merge.
+
 ## [0.6.0] - 2025-09-16
 
 ### Added

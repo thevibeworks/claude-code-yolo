@@ -1,8 +1,9 @@
 
-IMAGE_NAME := ghcr.io/thevibeworks/ccyolo
+IMAGE_NAME := ghcr.io/thevibeworks/deva
 TAG := latest
-CONTAINER_NAME := ccyolo-$(shell basename $(PWD))-$(shell date +%s)
+CONTAINER_NAME := deva-$(shell basename $(PWD))-$(shell date +%s)
 CLAUDE_CODE_VERSION := 1.0.115
+CODEX_VERSION := 0.36.0
 
 export DOCKER_BUILDKIT := 1
 
@@ -11,19 +12,19 @@ export DOCKER_BUILDKIT := 1
 .PHONY: build
 build:
 	@echo "🔨 Building Claude Code YOLO Docker image..."
-	docker build --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
+	docker build --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Build completed: $(IMAGE_NAME):$(TAG)"
 
 .PHONY: rebuild
 rebuild:
 	@echo "🔨 Rebuilding Claude Code YOLO Docker image (no cache)..."
-	docker build --no-cache --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
+	docker build --no-cache --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Rebuild completed: $(IMAGE_NAME):$(TAG)"
 
 .PHONY: buildx
 buildx:
 	@echo "🔨 Building with docker buildx..."
-	docker buildx build --load --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) -t $(IMAGE_NAME):$(TAG) .
+	docker buildx build --load --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Buildx completed: $(IMAGE_NAME):$(TAG)"
 
 .PHONY: buildx-multi
@@ -31,6 +32,7 @@ buildx-multi:
 	@echo "🔨 Building multi-arch images for amd64 and arm64..."
 	docker buildx build --platform linux/amd64,linux/arm64 \
 		--build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) \
+		--build-arg CODEX_VERSION=$(CODEX_VERSION) \
 		--push -t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Multi-arch build completed and pushed: $(IMAGE_NAME):$(TAG)"
 
@@ -39,6 +41,7 @@ buildx-multi-local:
 	@echo "🔨 Building multi-arch images locally..."
 	docker buildx build --platform linux/amd64,linux/arm64 \
 		--build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) \
+		--build-arg CODEX_VERSION=$(CODEX_VERSION) \
 		-t $(IMAGE_NAME):$(TAG) .
 	@echo "✅ Multi-arch build completed locally: $(IMAGE_NAME):$(TAG)"
 
@@ -156,6 +159,7 @@ help:
 	@echo "  IMAGE_NAME           Docker image name (default: $(IMAGE_NAME))"
 	@echo "  TAG                  Docker image tag (default: $(TAG))"
 	@echo "  CLAUDE_CODE_VERSION  Claude CLI version (default: $(CLAUDE_CODE_VERSION))"
+	@echo "  CODEX_VERSION        Codex CLI version (default: $(CODEX_VERSION))"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build                                    # Build the image"
