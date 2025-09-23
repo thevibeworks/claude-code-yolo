@@ -13,12 +13,35 @@
 - Minimal markdown markers, no unnecessary formatting, minimal emojis.
 - Reference issue numbers in the format `#<issue-number>` for easy linking.
 
+# [2025-09-19] Dev Log: Profile-only UX; decouple build from run
+- Why: Running agents should be trivial; mixing build concerns into the run wrapper created ambiguity (pull vs build, tag vs Dockerfile) and too many knobs. Teams need predictable per‑project defaults.
+- What:
+  - Added `--profile`/`-p` (canonical).
+  - Rust maps to `ghcr.io/thevibeworks/deva:rust` (same repo, tag-based).
+  - Wrapper flags allowed before or after the agent; help and examples clarified.
+  - Reserve `-p` for deva; pass agent prompt flags after `--` (breaking but explicit).
+  - Config: default XDG root `~/.config/deva` with per-agent homes; `-c DIR` treated as DEVA ROOT when it contains `claude/` or `codex/`.
+  - Auto-link legacy creds into DEVA ROOT by default (`~/.claude*`, `~/.codex`); disable with `--no-autolink`, `AUTOLINK=false`, or `DEVA_NO_AUTOLINK=1`.
+  - Builder flags were WIP; not shipped. Removed from code; use Makefile targets (`make build`, `make build-rust`) or explicit `docker build` instead.
+  - When an image:tag is missing, error now prints one‑liners per profile (Makefile + docker commands).
+  - Makefile: add `build-rust`, `buildx-multi-rust`; bump CLI versions (Claude `1.0.119`, Codex `0.39.0`).
+- Result: Zero‑thought startup, clean per‑project defaults via `.deva` PROFILE, reproducible paths with fewer CLI options, clearer fixes when images are absent.
+
+Context (whole view):
+- The real problem
+  - Build concerns leaked into run UX; unclear precedence; too many flags.
+  - Lack of per‑project defaults led to ad‑hoc flags per run.
+- What users actually need
+  - “deva” just runs; per‑project default profile; single explicit prepare step; actionable errors; reproducibility with pinned tags and Makefile targets.
+- Better UX proposal (next)
+  - `prepare` subcommand (pull tag; optionally build via env), `.deva` PROFILE first, auto-detect profile (Cargo.toml ⇒ rust), `doctor` diagnostics.
+
 # [2025-09-18] Dev Log: Complete rebrand to deva.sh multi-agent wrapper
 - Why: Transform claude-code-yolo from Claude-specific wrapper into unified multi-agent wrapper per #98. Enable Codex integration without breaking existing YOLO ergonomics.
 - What: **COMPREHENSIVE REFACTOR**
   - **Architecture**: Built pluggable agent system with `agents/claude.sh` and `agents/codex.sh` modules, unified dispatcher `deva.sh`
   - **Container Management**: Project-scoped containers (`deva-<agent>-<project>-<pid>`), `--ps`/`--inspect`/`shell` commands with fzf picker
-  - **Config Evolution**: `--config-home`/`-H` mounts entire auth homes (`.claude`, `.codex`) to `/home/deva`, new `.deva*` config files with `.claude-yolo*` back-compat
+  - **Config Evolution**: `--config-home`/`-c` mounts entire auth homes (`.claude`, `.codex`) to `/home/deva`, new `.deva*` config files with `.claude-yolo*` back-compat
   - **Agent Safety**: Auto-inject safety flags (`--dangerously-skip-permissions` for Claude, `--dangerously-bypass-approvals-and-sandbox` for Codex)
   - **OAuth Protection**: Strip conflicting `OPENAI_*` env vars when `.codex/auth.json` is mounted to preserve OAuth sessions
   - **Backward Compatibility**: `claude-yolo` → `deva.sh claude` shim, deprecation warnings for `claude.sh`/`claudeb.sh`
@@ -866,5 +889,3 @@ Entering container claude-code-yolo-myproject-12345 as claude user...
 - Added help system with `claude-yolo --help`
 
 **Status**: ✅ **COMPLETED** - Issue #4 resolved
-
----

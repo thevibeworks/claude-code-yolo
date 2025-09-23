@@ -31,11 +31,22 @@ agent_prepare() {
         using_custom_home=true
     fi
 
-    if [ "$using_custom_home" = false ]; then
+    if [ "$using_custom_home" = false ] && [ -z "${CONFIG_ROOT:-}" ]; then
         if [ -d "$HOME/.claude" ]; then
             DOCKER_ARGS+=("-v" "$HOME/.claude:/home/deva/.claude")
         fi
         if [ -f "$HOME/.claude.json" ]; then
+            DOCKER_ARGS+=("-v" "$HOME/.claude.json:/home/deva/.claude.json")
+        fi
+    fi
+
+    # Back-compat: if CONFIG_HOME was auto-selected and has no Claude creds,
+    # but host creds exist, also mount host creds.
+    if [ "$using_custom_home" = true ] && [ "${CONFIG_HOME_AUTO:-false}" = true ] && [ -z "${CONFIG_ROOT:-}" ]; then
+        if [ ! -d "$CONFIG_HOME/.claude" ] && [ -d "$HOME/.claude" ]; then
+            DOCKER_ARGS+=("-v" "$HOME/.claude:/home/deva/.claude")
+        fi
+        if [ ! -f "$CONFIG_HOME/.claude.json" ] && [ -f "$HOME/.claude.json" ]; then
             DOCKER_ARGS+=("-v" "$HOME/.claude.json:/home/deva/.claude.json")
         fi
     fi

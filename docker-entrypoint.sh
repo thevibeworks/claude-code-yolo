@@ -159,6 +159,17 @@ setup_nonroot_user() {
     chmod 755 /root 2>/dev/null || true
 }
 
+fix_rust_permissions() {
+    # Ensure rustup/cargo dirs are writable by current DEVA_UID after UID remap
+    local rh="/opt/rustup"
+    local ch="/opt/cargo"
+    if [ -d "$rh" ]; then chown -R "$DEVA_UID:$DEVA_GID" "$rh" 2>/dev/null || true; fi
+    if [ -d "$ch" ]; then chown -R "$DEVA_UID:$DEVA_GID" "$ch" 2>/dev/null || true; fi
+    # Ensure they exist to avoid runtime failures
+    [ -d "$rh" ] || mkdir -p "$rh"
+    [ -d "$ch" ] || mkdir -p "$ch"
+}
+
 build_gosu_env_cmd() {
     local user="$1"
     shift
@@ -183,7 +194,10 @@ ensure_agent_binaries() {
 }
 
 main() {
-    export PATH="/home/deva/.local/bin:/home/deva/.npm-global/bin:/root/.local/bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH"
+    export PATH="/home/deva/.local/bin:/home/deva/.npm-global/bin:/root/.local/bin:/usr/local/go/bin:/opt/cargo/bin:/usr/local/cargo/bin:$PATH"
+    # Prefer /opt paths used by deva-rust layer
+    export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}"
+    export CARGO_HOME="${CARGO_HOME:-/opt/cargo}"
 
     CLAUDE_VERSION="$(get_claude_version)"
     CODEX_VERSION="$(get_codex_version)"
@@ -205,6 +219,7 @@ main() {
 
     ensure_agent_binaries
     setup_nonroot_user
+    fix_rust_permissions
 
     if [ $# -eq 0 ]; then
     if [ "$DEVA_AGENT" = "codex" ]; then

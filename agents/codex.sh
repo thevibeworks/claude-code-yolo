@@ -49,7 +49,7 @@ agent_prepare() {
     fi
 
     local codex_home=""
-    if [ "$using_custom_home" = false ]; then
+    if [ "$using_custom_home" = false ] && [ -z "${CONFIG_ROOT:-}" ]; then
         if [ -d "$HOME/.codex" ]; then
             DOCKER_ARGS+=("-v" "$HOME/.codex:/home/deva/.codex")
             codex_home="$HOME/.codex"
@@ -58,6 +58,20 @@ agent_prepare() {
         if [ -d "$CONFIG_HOME/.codex" ]; then
             codex_home="$CONFIG_HOME/.codex"
         fi
+    fi
+
+    # Back-compat: if CONFIG_HOME was auto-selected and has no Codex creds,
+    # but host creds exist, also mount host creds.
+    if [ "$using_custom_home" = true ] && [ "${CONFIG_HOME_AUTO:-false}" = true ] && [ -z "${CONFIG_ROOT:-}" ]; then
+        if [ ! -d "$CONFIG_HOME/.codex" ] && [ -d "$HOME/.codex" ]; then
+            DOCKER_ARGS+=("-v" "$HOME/.codex:/home/deva/.codex")
+            codex_home="$HOME/.codex"
+        fi
+    fi
+
+    # If CONFIG_ROOT is active, detect Codex auth.json there for env stripping
+    if [ -z "$codex_home" ] && [ -n "${CONFIG_ROOT:-}" ] && [ -f "$CONFIG_ROOT/codex/.codex/auth.json" ]; then
+        codex_home="$CONFIG_ROOT/codex/.codex"
     fi
 
     if [ -n "$codex_home" ] && [ -f "$codex_home/auth.json" ]; then
