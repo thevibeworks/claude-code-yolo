@@ -116,20 +116,96 @@ deva.sh claude \
 # ❌ Claude has FULL WRITE ACCESS to ALL your secrets!
 ```
 
-**Multiple Config Homes for Isolated Auth**:
+**XDG Config Home (Per-Agent)**:
 ```bash
-# Personal Claude account
+$XDG_CONFIG_HOME defaults to ~/.config
+
+# Default layout (each agent directory under ~/.config/deva mounts into /home/deva):
+
+~/.config/deva/
+├── claude/                  # Claude-only auth/config
+│   ├── .claude/
+│   ├── .claude.json
+│   ├── .aws/                # optional: Bedrock creds
+│   └── .config/gcloud/      # optional: Vertex AI creds
+└── codex/                   # Codex-only auth/config
+    └── .codex/              # contains auth.json
+
+# Mount destinations inside container:
+# - claude/*  → /home/deva/*
+# - codex/*   → /home/deva/*
+
+# Override per invocation
 deva.sh claude -c ~/auth-homes/personal
-
-# Work Claude account
-deva.sh claude -c ~/auth-homes/work-claude
-
-# Production Codex account
-deva.sh codex -c ~/auth-homes/codex-prod -- -m gpt-5-codex
-
-# Client project with Bedrock
+deva.sh codex  -c ~/auth-homes/codex-prod -- -m gpt-5-codex
 deva.sh claude -c ~/auth-homes/client-aws --auth-with bedrock
 ```
+
+Notes:
+- By default, we mount all agent homes found under `~/.config/deva/` so you can run multiple agents in the same container.
+- If you pass `-c` to a directory that contains `claude/` and/or `codex/`, we treat it as a DEVA ROOT and mount all agent homes found there.
+- If `-c` points to a leaf directory with dotfiles directly (e.g., only `.claude*`), we mount only that directory.
+
+Migration from legacy dotfiles:
+```bash
+# 1) Create the new XDG tree
+mkdir -p ~/.config/deva/{claude,codex}
+
+# 2) Move Claude Code OAuth files
+if [ -d ~/.claude ]; then mv ~/.claude ~/.config/deva/claude/.claude; fi
+if [ -f ~/.claude.json ]; then mv ~/.claude.json ~/.config/deva/claude/.claude.json; fi
+
+# 3) Move Codex OAuth directory
+if [ -d ~/.codex ]; then mv ~/.codex ~/.config/deva/codex/.codex; fi
+
+# 4) Optional: Bedrock / Vertex creds (choose one spot)
+#    Either keep per-agent:
+if [ -d ~/.aws ]; then cp -a ~/.aws ~/.config/deva/claude/.aws; fi
+if [ -d ~/.config/gcloud ]; then mkdir -p ~/.config/deva/claude/.config && \
+  cp -a ~/.config/gcloud ~/.config/deva/claude/.config/; fi
+
+# 5) Verify
+tree -a ~/.config/deva | sed -n '1,200p'
+
+# Done. Now just run
+deva.sh claude
+deva.sh codex
+```
+
+**Symlink Setup**
+
+Prefer links if you don’t want to move files. Docker resolves symlinks at start and binds the target.
+
+```bash
+# Link specific files/dirs into deva root
+ln -s ~/.claude         ~/.config/deva/claude/.claude
+ln -s ~/.claude.json    ~/.config/deva/claude/.claude.json
+ln -s ~/.codex          ~/.config/deva/codex/.codex
+
+# Or link whole agent directories (cleaner)
+ln -s ~/auth-homes/claude ~/.config/deva/claude
+ln -s ~/auth-homes/codex  ~/.config/deva/codex
+
+# Verify symlinks resolve
+ls -l ~/.config/deva/claude
+readlink -f ~/.config/deva/claude/.claude
+```
+
+Notes:
+- Use absolute paths for links. Relative is fine if it resolves correctly from the link’s parent.
+- The symlink’s target must exist, or the container mount will fail.
+- Changing the link after the container starts won’t retarget the running bind; restart to pick up changes.
+- macOS: ensure the target paths are allowed under Docker Desktop File Sharing.
+
+Auto-linking (default)
+- On first run with the default XDG root (`~/.config/deva`) and no explicit `-c`, we auto-link legacy creds if the deva root is missing them:
+  - `~/.claude` → `~/.config/deva/claude/.claude`
+  - `~/.claude.json` → `~/.config/deva/claude/.claude.json`
+  - `~/.codex` → `~/.config/deva/codex/.codex`
+- Disable with any of:
+  - CLI: `--no-autolink`
+  - Config: add `AUTOLINK=false` to `.deva`
+  - Env: `DEVA_NO_AUTOLINK=1` (export and run)
 
 **Container Management**:
 ```bash
@@ -146,7 +222,7 @@ deva.sh shell        # alias for --inspect
 
 ## Multi-Account Auth Architecture
 
-**Config Home Structure** (`--config-home DIR` / `-H DIR`):
+**Config Home Structure** (`--config-home DIR` / `-c DIR`):
 
 deva.sh mounts entire auth directories into `/home/deva`, enabling **isolated authentication contexts** for different accounts, organizations, or projects.
 
@@ -199,6 +275,7 @@ ENV=DEBUG=${DEBUG:-development}
 ENV=GH_TOKEN
 CONFIG_HOME=~/auth-homes/claude-max
 DEFAULT_AGENT=claude
+PROFILE=rust                  # pick a dev profile (same as -p rust)
 HOST_NET=false
 ```
 
@@ -215,7 +292,7 @@ Supported keys: `VOLUME`, `ENV`, `CONFIG_HOME`, `DEFAULT_AGENT`, `HOST_NET`, plu
 | **Claude** | Bedrock | `deva.sh claude -c ~/auth-homes/aws --auth-with bedrock` | `.aws/` credentials |
 | **Claude** | Vertex AI | `deva.sh claude -c ~/auth-homes/gcp --auth-with vertex` | `.config/gcloud/` |
 | **Claude** | Copilot | `deva.sh claude --auth-with copilot` | GitHub token via copilot-api |
-| **Claude** | OAuth Token | `deva.sh claude --auth-with oat -p "task"` | `CLAUDE_CODE_OAUTH_TOKEN` |
+| **Claude** | OAuth Token | `deva.sh claude -- --auth-with oat -p "task"` | `CLAUDE_CODE_OAUTH_TOKEN` |
 | **Codex** | OAuth | `deva.sh codex -c ~/auth-homes/openai` | `.codex/auth.json` |
 
 **Multi-Org Support Examples**:
@@ -230,7 +307,7 @@ deva.sh claude -c ~/auth-homes/corp-aws --auth-with bedrock
 deva.sh codex -c ~/auth-homes/client-openai
 
 # Quick API key for testing
-ANTHROPIC_API_KEY=sk-... deva.sh claude --auth-with api-key -p "test this"
+ANTHROPIC_API_KEY=sk-... deva.sh claude -- --auth-with api-key -p "test this"
 ```
 
 ## Image Contents
@@ -249,3 +326,25 @@ make shell           # open an interactive shell inside the image
 ```
 
 See `CHANGELOG.md` and `DEV-LOGS.md` in this directory for history and daily notes.
+
+## Image Profiles and Local Dockerfiles
+
+Select a development image profile (deva flags can appear before or after the agent):
+
+```bash
+# Use base image (default)
+deva.sh claude
+
+# Use rust toolchain image (tries pull, then local Dockerfile.rust if present)
+deva.sh -p rust claude
+deva.sh claude -p rust   # equivalent
+
+# If the tag isn't available locally and pull fails, build it
+make build-rust   # or: docker build -f Dockerfile.rust -t ghcr.io/thevibeworks/deva:rust .
+```
+
+Profiles map to images:
+- base → `ghcr.io/thevibeworks/deva:latest`
+- rust → `ghcr.io/thevibeworks/deva:rust` (falls back to local `Dockerfile.rust` when available)
+
+You can also pin a custom image via env: `DEVA_DOCKER_IMAGE`, `DEVA_DOCKER_TAG`.

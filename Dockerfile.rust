@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1.4
+
+# deva.sh - Rust Developer Image
+# Extends main deva image with Rust toolchain and ecosystem tools
+
+ARG BASE_IMAGE=ghcr.io/thevibeworks/deva:latest
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="deva-rust"
+LABEL org.opencontainers.image.description="Rust development environment with full toolchain"
+
+ARG RUST_TOOLCHAINS="stable"
+ARG RUST_TARGETS="wasm32-unknown-unknown"
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ENV RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo \
+    PATH=/opt/cargo/bin:$PATH
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libpq-dev postgresql-client \
+        libmysqlclient-dev mysql-client \
+        libsqlite3-dev sqlite3 \
+        libssl-dev \
+        libcurl4-openssl-dev \
+        libpng-dev libjpeg-dev \
+        libudev-dev \
+        libproc2-dev
+
+RUN --mount=type=cache,target=/tmp/rust-cache,sharing=locked \
+    set -euxo pipefail && \
+    mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+        sh -s -- -y --default-toolchain none --profile default && \
+    rustup toolchain install ${RUST_TOOLCHAINS} && \
+    for tc in ${RUST_TOOLCHAINS}; do \
+        rustup component add --toolchain "$tc" rustfmt clippy rust-analyzer; \
+    done && \
+    if [ -n "${RUST_TARGETS}" ]; then \
+        for tc in ${RUST_TOOLCHAINS}; do \
+            rustup target add --toolchain "$tc" ${RUST_TARGETS}; \
+        done; \
+    fi && \
+    rustup default stable
+
+RUN chown -R "$DEVA_UID:$DEVA_GID" "$RUSTUP_HOME" "$CARGO_HOME"
+
+RUN echo 'export PATH="/opt/cargo/bin:$PATH"' >> "$DEVA_HOME/.zshrc" && \
+    echo 'export RUSTUP_HOME=/opt/rustup' >> "$DEVA_HOME/.zshrc" && \
+    echo 'export CARGO_HOME=/opt/cargo' >> "$DEVA_HOME/.zshrc" && \
+    sed -i 's/plugins=(git docker python golang node npm aws/plugins=(git docker python golang rust node npm aws/' "$DEVA_HOME/.zshrc" && \
+    echo '# Rust aliases' >> "$DEVA_HOME/.zshrc" && \
+    echo 'alias cr="cargo run"' >> "$DEVA_HOME/.zshrc" && \
+    echo 'alias cb="cargo build"' >> "$DEVA_HOME/.zshrc" && \
+    echo 'alias ct="cargo test"' >> "$DEVA_HOME/.zshrc" && \
+    echo 'alias cc="cargo check"' >> "$DEVA_HOME/.zshrc" && \
+    echo 'alias cw="cargo watch -x check -x test -x run"' >> "$DEVA_HOME/.zshrc" && \
+    echo 'alias cf="cargo fmt"' >> "$DEVA_HOME/.zshrc" && \
+    echo 'alias cl="cargo clippy"' >> "$DEVA_HOME/.zshrc"

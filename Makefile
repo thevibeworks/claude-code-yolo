@@ -1,9 +1,14 @@
 
 IMAGE_NAME := ghcr.io/thevibeworks/deva
 TAG := latest
+RUST_TAG := rust
+DOCKERFILE := Dockerfile
+RUST_DOCKERFILE := Dockerfile.rust
+MAIN_IMAGE := $(IMAGE_NAME):$(TAG)
+RUST_IMAGE := $(IMAGE_NAME):$(RUST_TAG)
 CONTAINER_NAME := deva-$(shell basename $(PWD))-$(shell date +%s)
-CLAUDE_CODE_VERSION := 1.0.115
-CODEX_VERSION := 0.36.0
+CLAUDE_CODE_VERSION := 1.0.119
+CODEX_VERSION := 0.39.0
 
 export DOCKER_BUILDKIT := 1
 
@@ -11,30 +16,49 @@ export DOCKER_BUILDKIT := 1
 
 .PHONY: build
 build:
-	@echo "🔨 Building deva.sh Docker image..."
-	docker build --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(IMAGE_NAME):$(TAG) .
-	@echo "✅ Build completed: $(IMAGE_NAME):$(TAG)"
+	@echo "🔨 Building Docker image with $(DOCKERFILE)..."
+	docker build -f $(DOCKERFILE) --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(MAIN_IMAGE) .
+	@echo "✅ Build completed: $(MAIN_IMAGE)"
 
 .PHONY: rebuild
 rebuild:
-	@echo "🔨 Rebuilding deva.sh Docker image (no cache)..."
-	docker build --no-cache --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(IMAGE_NAME):$(TAG) .
-	@echo "✅ Rebuild completed: $(IMAGE_NAME):$(TAG)"
+	@echo "🔨 Rebuilding Docker image (no cache) with $(DOCKERFILE)..."
+	docker build -f $(DOCKERFILE) --no-cache --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(MAIN_IMAGE) .
+	@echo "✅ Rebuild completed: $(MAIN_IMAGE)"
+
+
+.PHONY: build-rust
+build-rust:
+	@echo "🔨 Building Rust Docker image..."
+	docker build -f $(RUST_DOCKERFILE) --build-arg BASE_IMAGE=$(MAIN_IMAGE) -t $(RUST_IMAGE) .
+	@echo "✅ Rust build completed: $(RUST_IMAGE)"
+
+.PHONY: build-all
+build-all: build build-rust
+	@echo "✅ All images built successfully"
 
 .PHONY: buildx
 buildx:
 	@echo "🔨 Building with docker buildx..."
-	docker buildx build --load --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(IMAGE_NAME):$(TAG) .
-	@echo "✅ Buildx completed: $(IMAGE_NAME):$(TAG)"
+	docker buildx build -f $(DOCKERFILE) --load --build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) --build-arg CODEX_VERSION=$(CODEX_VERSION) -t $(MAIN_IMAGE) .
+	@echo "✅ Buildx completed: $(MAIN_IMAGE)"
 
 .PHONY: buildx-multi
 buildx-multi:
 	@echo "🔨 Building multi-arch images for amd64 and arm64..."
-	docker buildx build --platform linux/amd64,linux/arm64 \
+	docker buildx build -f $(DOCKERFILE) --platform linux/amd64,linux/arm64 \
 		--build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) \
 		--build-arg CODEX_VERSION=$(CODEX_VERSION) \
-		--push -t $(IMAGE_NAME):$(TAG) .
-	@echo "✅ Multi-arch build completed and pushed: $(IMAGE_NAME):$(TAG)"
+		--push -t $(MAIN_IMAGE) .
+	@echo "✅ Multi-arch build completed and pushed: $(MAIN_IMAGE)"
+
+.PHONY: buildx-multi-rust
+buildx-multi-rust:
+	@echo "🔨 Building multi-arch Rust images for amd64 and arm64..."
+	docker buildx build -f $(RUST_DOCKERFILE) --platform linux/amd64,linux/arm64 \
+		--build-arg BASE_IMAGE=$(MAIN_IMAGE) \
+		--push -t $(RUST_IMAGE) .
+	@echo "✅ Multi-arch Rust build completed and pushed: $(RUST_IMAGE)"
 
 .PHONY: buildx-multi-local
 buildx-multi-local:
@@ -42,68 +66,79 @@ buildx-multi-local:
 	docker buildx build --platform linux/amd64,linux/arm64 \
 		--build-arg CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) \
 		--build-arg CODEX_VERSION=$(CODEX_VERSION) \
-		-t $(IMAGE_NAME):$(TAG) .
-	@echo "✅ Multi-arch build completed locally: $(IMAGE_NAME):$(TAG)"
+		-t $(MAIN_IMAGE) .
+	@echo "✅ Multi-arch build completed locally: $(MAIN_IMAGE)"
 
 .PHONY: clean
 clean:
 	@echo "🧹 Cleaning up Docker artifacts..."
-	-docker rmi $(IMAGE_NAME):$(TAG) 2>/dev/null || true
+	-docker rmi $(MAIN_IMAGE) 2>/dev/null || true
+	-docker rmi $(RUST_IMAGE) 2>/dev/null || true
 	-docker system prune -f
 	@echo "✅ Cleanup completed"
 
 .PHONY: clean-all
 clean-all:
 	@echo "🧹 Deep cleaning Docker artifacts and build cache..."
-	-docker rmi $(IMAGE_NAME):$(TAG) 2>/dev/null || true
+	-docker rmi $(MAIN_IMAGE) 2>/dev/null || true
+	-docker rmi $(RUST_IMAGE) 2>/dev/null || true
 	-docker builder prune -af
 	-docker system prune -af --volumes
 	@echo "✅ Deep cleanup completed"
 
 .PHONY: shell
 shell:
-	@echo "🐚 Opening shell in $(IMAGE_NAME):$(TAG)..."
+	@echo "🐚 Opening shell in $(MAIN_IMAGE)..."
 	docker run --rm -it \
 		-v $(PWD):$(PWD) \
 		-w $(PWD) \
 		--name $(CONTAINER_NAME) \
-		$(IMAGE_NAME):$(TAG) /bin/zsh
+		$(MAIN_IMAGE) /bin/zsh
 
 .PHONY: test
 test:
-	@echo "🧪 Testing $(IMAGE_NAME):$(TAG)..."
+	@echo "🧪 Testing $(MAIN_IMAGE)..."
 	@echo "Testing claude command..."
-	docker run --rm $(IMAGE_NAME):$(TAG) claude --version
+	docker run --rm $(MAIN_IMAGE) claude --version
 	@echo "Testing development tools..."
-	docker run --rm $(IMAGE_NAME):$(TAG) bash -c 'python --version && node --version && go version && rustc --version'
+	docker run --rm $(MAIN_IMAGE) bash -c 'python --version && node --version && go version'
 	@echo "✅ All tests passed"
+
+.PHONY: test-rust
+test-rust:
+	@echo "🧪 Testing $(RUST_IMAGE)..."
+	@echo "Testing Rust toolchain..."
+	docker run --rm $(RUST_IMAGE) bash -c 'rustc --version && cargo --version && rustfmt --version && clippy-driver --version'
+	@echo "Testing Rust tools..."
+	docker run --rm $(RUST_IMAGE) bash -c 'cargo-watch --version && wasm-pack --version'
+	@echo "✅ Rust tests passed"
 
 .PHONY: test-local
 test-local:
-	@echo "🧪 Testing $(IMAGE_NAME):$(TAG) with local directory..."
+	@echo "🧪 Testing $(MAIN_IMAGE) with local directory..."
 	docker run --rm -it \
 		-v $(PWD):$(PWD) \
 		-w $(PWD) \
-		$(IMAGE_NAME):$(TAG) bash -c 'pwd && ls -la && claude --version'
+		$(MAIN_IMAGE) bash -c 'pwd && ls -la && claude --version'
 
 .PHONY: info
 info:
-	@echo "📊 Image information for $(IMAGE_NAME):$(TAG):"
-	@docker images $(IMAGE_NAME):$(TAG) --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+	@echo "📊 Image information for $(MAIN_IMAGE):"
+	@docker images $(MAIN_IMAGE) --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
 	@echo ""
 	@echo "🔍 Image layers:"
-	@docker history $(IMAGE_NAME):$(TAG) --no-trunc
+	@docker history $(MAIN_IMAGE) --no-trunc
 
 .PHONY: push
 push:
-	@echo "📤 Pushing $(IMAGE_NAME):$(TAG) to registry..."
-	docker push $(IMAGE_NAME):$(TAG)
+	@echo "📤 Pushing $(MAIN_IMAGE) to registry..."
+	docker push $(MAIN_IMAGE)
 	@echo "✅ Push completed"
 
 .PHONY: pull
 pull:
-	@echo "📥 Pulling $(IMAGE_NAME):$(TAG) from registry..."
-	docker pull $(IMAGE_NAME):$(TAG)
+	@echo "📥 Pulling $(MAIN_IMAGE) from registry..."
+	docker pull $(MAIN_IMAGE)
 	@echo "✅ Pull completed"
 
 .PHONY: build-test
@@ -153,23 +188,35 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Available targets:"
-	@awk 'BEGIN {FS = ":.*##"; printf ""} /^[a-zA-Z_-]+:.*?##/ { printf "  %-15s %s\n", $$1, $$2 } /^##@/ { printf "\n%s\n", substr($$0, 5) }' $(MAKEFILE_LIST)
+	@echo "  build                Build main Docker image"
+	@echo "  build-rust           Build Rust Docker image"
+	@echo "  build-all            Build all images"
+	@echo "  rebuild              Rebuild without cache"
+	@echo "  buildx               Build with buildx"
+	@echo "  buildx-multi         Build multi-arch and push"
+	@echo "  buildx-multi-rust    Build multi-arch Rust and push"
+	@echo "  test                 Test main image"
+	@echo "  test-rust            Test Rust image"
+	@echo "  shell                Open shell in container"
+	@echo "  clean                Clean up Docker artifacts"
+	@echo "  clean-all            Deep clean with build cache"
+	@echo "  push                 Push image to registry"
+	@echo "  pull                 Pull image from registry"
+	@echo "  info                 Show image information"
+	@echo "  lint                 Lint Dockerfile"
 	@echo ""
 	@echo "Environment variables:"
-	@echo "  IMAGE_NAME           Docker image name (default: $(IMAGE_NAME))"
+	@echo "  IMAGE_NAME           Main image name (default: $(IMAGE_NAME))"
 	@echo "  TAG                  Docker image tag (default: $(TAG))"
+	@echo "  RUST_TAG             Rust image tag (default: $(RUST_TAG))"
+	@echo "  DOCKERFILE           Dockerfile to use (default: $(DOCKERFILE))"
+	@echo "  RUST_DOCKERFILE      Rust Dockerfile path (default: $(RUST_DOCKERFILE))"
 	@echo "  CLAUDE_CODE_VERSION  Claude CLI version (default: $(CLAUDE_CODE_VERSION))"
 	@echo "  CODEX_VERSION        Codex CLI version (default: $(CODEX_VERSION))"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make build                                    # Build the image"
-	@echo "  make rebuild                                  # Rebuild without cache"
-	@echo "  make shell                                    # Open shell in container"
-	@echo "  make test                                     # Test image functionality"
-	@echo "  make TAG=dev build                            # Build with custom tag"
-	@echo "  make CLAUDE_CODE_VERSION=1.0.45 build        # Build with specific Claude version"
-	@echo "  make clean                                    # Clean up Docker artifacts"
-	@echo "  make version-check                            # Check version consistency"
-	@echo "  make release-patch                            # Create patch release"
-	@echo "  make release-minor                            # Create minor release"
-	@echo "  make release-major                            # Create major release"
+	@echo "  make build                                    # Build main image"
+	@echo "  make build-rust                               # Build Rust image"
+	@echo "  make DOCKERFILE=$(RUST_DOCKERFILE) build         # Build with specific Dockerfile"
+	@echo "  make TAG=dev build-all                        # Build all with custom tag"
+	@echo "  make CLAUDE_CODE_VERSION=1.0.117 build       # Build with specific Claude version"
