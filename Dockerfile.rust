@@ -29,11 +29,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libcurl4-openssl-dev \
         libpng-dev libjpeg-dev \
         libudev-dev \
-        libproc2-dev
+        libproc2-dev \
+        libzmq3-dev libzmq5 libczmq-dev
 
 RUN --mount=type=cache,target=/tmp/rust-cache,sharing=locked \
     set -euxo pipefail && \
     mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" && \
+    mkdir -p "$CARGO_HOME/registry/cache" "$CARGO_HOME/registry/index" "$CARGO_HOME/git" && \
+    chown -R "$DEVA_UID:$DEVA_GID" "$RUSTUP_HOME" "$CARGO_HOME" && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
         sh -s -- -y --default-toolchain none --profile default && \
     rustup toolchain install ${RUST_TOOLCHAINS} && \
@@ -45,9 +48,8 @@ RUN --mount=type=cache,target=/tmp/rust-cache,sharing=locked \
             rustup target add --toolchain "$tc" ${RUST_TARGETS}; \
         done; \
     fi && \
-    rustup default stable
-
-RUN chown -R "$DEVA_UID:$DEVA_GID" "$RUSTUP_HOME" "$CARGO_HOME"
+    rustup default stable && \
+    chown -R "$DEVA_UID:$DEVA_GID" "$RUSTUP_HOME" "$CARGO_HOME"
 
 RUN echo 'export PATH="/opt/cargo/bin:$PATH"' >> "$DEVA_HOME/.zshrc" && \
     echo 'export RUSTUP_HOME=/opt/rustup' >> "$DEVA_HOME/.zshrc" && \

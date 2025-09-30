@@ -158,13 +158,14 @@ pick_copilot_models() {
         done
 
         for m in \
-            "gpt-5-mini" \
+            "o3-mini-2025-01-31" \
+            "o3-mini" \
             "gpt-4o-mini" \
             "gpt-4o-mini-2024-07-18" \
             "o4-mini" \
             "o4-mini-2025-04-16" \
-            "o3-mini" \
             "o3-mini-paygo" \
+            "gpt-5-mini" \
             "grok-code-fast-1"
         do
             echo "$ids" | grep -qx "$m" && { fast="$m"; break; }
@@ -172,7 +173,7 @@ pick_copilot_models() {
     fi
 
     [ -z "$main" ] && main="claude-sonnet-4"
-    [ -z "$fast" ] && fast="gpt-4o-mini"
+    [ -z "$fast" ] && fast="o3-mini-2025-01-31"
     echo "$main $fast"
 }
 
@@ -966,7 +967,7 @@ run_claude_local() {
         local _main_set_by_user="${ANTHROPIC_MODEL:+1}"
         local _fast_set_by_user="${ANTHROPIC_SMALL_FAST_MODEL:+1}"
         ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-sonnet-4}"
-        ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-gpt-4o-mini}"
+        ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-o3-mini-2025-01-31}"
         export ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL
 
         echo "GitHub Copilot proxy will start on port 4141"
@@ -1458,7 +1459,7 @@ case "$AUTH_MODE" in
         DOCKER_ARGS+=("-e" "ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4}")
     fi
     if ! user_specified_env "ANTHROPIC_SMALL_FAST_MODEL"; then
-        DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=${ANTHROPIC_SMALL_FAST_MODEL:-gpt-4o-mini}")
+        DOCKER_ARGS+=("-e" "ANTHROPIC_SMALL_FAST_MODEL=${ANTHROPIC_SMALL_FAST_MODEL:-o3-mini-2025-01-31}")
     fi
 
     if [ -d "$HOME/.local/share/copilot-api" ]; then

@@ -34,7 +34,10 @@ build-rust:
 	@echo "✅ Rust build completed: $(RUST_IMAGE)"
 
 .PHONY: build-all
-build-all: build build-rust
+build-all:
+	@echo "🔨 Building all images with versions: Claude $(CLAUDE_CODE_VERSION), Codex $(CODEX_VERSION)..."
+	@$(MAKE) build CLAUDE_CODE_VERSION=$(CLAUDE_CODE_VERSION) CODEX_VERSION=$(CODEX_VERSION)
+	@$(MAKE) build-rust BASE_IMAGE=$(MAIN_IMAGE)
 	@echo "✅ All images built successfully"
 
 .PHONY: buildx
