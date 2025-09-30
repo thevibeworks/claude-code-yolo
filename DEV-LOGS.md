@@ -13,6 +13,39 @@
 - Minimal markdown markers, no unnecessary formatting, minimal emojis.
 - Reference issue numbers in the format `#<issue-number>` for easy linking.
 
+# [2025-09-23] Dev Log: Multi-auth design for deva framework
+- Why: Port mature multi-auth system from claude.sh to support different AI providers (Anthropic, OpenAI, AWS, Google, GitHub) across all agents.
+- What:
+  - **Design Decision**: Agent-level auth (`deva.sh claude --auth-with bedrock`) over global-level (`deva.sh --auth-with bedrock claude`)
+  - **Auth Method Naming**: `claude`=Claude.ai OAuth, `chatgpt`=ChatGPT OAuth, `copilot`=GitHub Copilot proxy (different API endpoints per agent)
+  - **Copilot Complexity**: Claude uses Anthropic endpoints (`/v1/messages`, `ANTHROPIC_BASE_URL`), Codex uses OpenAI endpoints (`/v1/chat/completions`, `OPENAI_BASE_URL`)
+  - **Auth Matrix**: Claude supports claude/oat/api-key/bedrock/vertex/copilot; Codex supports chatgpt/api-key/copilot; copilot works via different proxy endpoints
+  - **Implementation Plan**: Each agent parses --auth-with, shared copilot proxy management, agent-specific env vars and endpoints
+- Result: Agent-level auth with provider-specific implementations. Copilot proxy serves both Anthropic and OpenAI formats but agents configure different base URLs and env var namespaces.
+
+## More about --auth-with copilot
+
+### Claude Code with --auth-with copilot:
+- Uses ANTHROPIC_BASE_URL=http://localhost:4141
+- Uses ANTHROPIC_API_KEY=dummy
+- Hits endpoint: POST /v1/messages (Anthropic format)
+- Proxy translates: Anthropic messages → OpenAI format → GitHub Copilot
+
+### Codex with --auth-with copilot:
+- Uses OPENAI_BASE_URL=http://localhost:4141
+- Uses OPENAI_API_KEY=dummy
+- Hits endpoint: POST /v1/chat/completions (OpenAI format)
+- Proxy handles: OpenAI format → GitHub Copilot (direct)
+
+### Complete Auth Matrix
+
+  | Agent  | claude | oat | api-key | bedrock | vertex | chatgpt | copilot                  |
+  |--------|--------|-----|---------|---------|--------|---------|--------------------------|
+  | Claude | ✅     | ✅  | ✅      | ✅      | ✅     | ❌      | ✅ (Anthropic endpoints) |
+  | Codex  | ❌     | ❌  | ✅      | ❌      | ❌     | ✅      | ✅ (OpenAI endpoints)    |
+
+
+
 # [2025-09-19] Dev Log: Profile-only UX; decouple build from run
 - Why: Running agents should be trivial; mixing build concerns into the run wrapper created ambiguity (pull vs build, tag vs Dockerfile) and too many knobs. Teams need predictable per‑project defaults.
 - What:
