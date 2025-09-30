@@ -119,16 +119,16 @@ deva.sh claude \
 **Multiple Config Homes for Isolated Auth**:
 ```bash
 # Personal Claude account
-deva.sh claude -H ~/auth-homes/personal
+deva.sh claude -c ~/auth-homes/personal
 
 # Work Claude account
-deva.sh claude -H ~/auth-homes/work-claude
+deva.sh claude -c ~/auth-homes/work-claude
 
 # Production Codex account
-deva.sh codex -H ~/auth-homes/codex-prod -- -m gpt-5-codex
+deva.sh codex -c ~/auth-homes/codex-prod -- -m gpt-5-codex
 
 # Client project with Bedrock
-deva.sh claude -H ~/auth-homes/client-aws --auth-with bedrock
+deva.sh claude -c ~/auth-homes/client-aws --auth-with bedrock
 ```
 
 **Container Management**:
@@ -166,9 +166,9 @@ deva.sh mounts entire auth directories into `/home/deva`, enabling **isolated au
     └── .aws/           # Client AWS Bedrock
 
 # Use different auth contexts seamlessly
-deva.sh claude -H ~/auth-homes/personal
-deva.sh claude -H ~/auth-homes/work-corp --auth-with bedrock
-deva.sh codex -H ~/auth-homes/work-corp
+deva.sh claude -c ~/auth-homes/personal
+deva.sh claude -c ~/auth-homes/work-corp --auth-with bedrock
+deva.sh codex -c ~/auth-homes/work-corp
 ```
 
 **Auth Protection**: When `.codex/auth.json` is mounted, deva.sh strips conflicting `OPENAI_*` env vars to ensure OAuth sessions aren't shadowed by stale API credentials.
@@ -210,24 +210,24 @@ Supported keys: `VOLUME`, `ENV`, `CONFIG_HOME`, `DEFAULT_AGENT`, `HOST_NET`, plu
 
 | Agent | Auth Method | Command Example | Auth Context |
 |-------|-------------|-----------------|--------------|
-| **Claude** | OAuth | `deva.sh claude -H ~/auth-homes/personal` | `.claude/`, `.claude.json` |
+| **Claude** | OAuth | `deva.sh claude -c ~/auth-homes/personal` | `.claude/`, `.claude.json` |
 | **Claude** | API Key | `deva.sh claude --auth-with api-key` | `ANTHROPIC_API_KEY` |
-| **Claude** | Bedrock | `deva.sh claude -H ~/auth-homes/aws --auth-with bedrock` | `.aws/` credentials |
-| **Claude** | Vertex AI | `deva.sh claude -H ~/auth-homes/gcp --auth-with vertex` | `.config/gcloud/` |
+| **Claude** | Bedrock | `deva.sh claude -c ~/auth-homes/aws --auth-with bedrock` | `.aws/` credentials |
+| **Claude** | Vertex AI | `deva.sh claude -c ~/auth-homes/gcp --auth-with vertex` | `.config/gcloud/` |
 | **Claude** | Copilot | `deva.sh claude --auth-with copilot` | GitHub token via copilot-api |
 | **Claude** | OAuth Token | `deva.sh claude --auth-with oat -p "task"` | `CLAUDE_CODE_OAUTH_TOKEN` |
-| **Codex** | OAuth | `deva.sh codex -H ~/auth-homes/openai` | `.codex/auth.json` |
+| **Codex** | OAuth | `deva.sh codex -c ~/auth-homes/openai` | `.codex/auth.json` |
 
 **Multi-Org Support Examples**:
 ```bash
 # Personal dev work
-deva.sh claude -H ~/auth-homes/personal
+deva.sh claude -c ~/auth-homes/personal
 
 # Corporate Bedrock account
-deva.sh claude -H ~/auth-homes/corp-aws --auth-with bedrock
+deva.sh claude -c ~/auth-homes/corp-aws --auth-with bedrock
 
 # Client project with their OpenAI license
-deva.sh codex -H ~/auth-homes/client-openai
+deva.sh codex -c ~/auth-homes/client-openai
 
 # Quick API key for testing
 ANTHROPIC_API_KEY=sk-... deva.sh claude --auth-with api-key -p "test this"
