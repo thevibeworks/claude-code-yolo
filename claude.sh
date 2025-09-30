@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.6.0"
+VERSION="0.7.0"
 DOCKER_IMAGE="${DEVA_DOCKER_IMAGE:-ghcr.io/thevibeworks/deva}"
 DOCKER_TAG="${CCYOLO_DOCKER_TAG:-latest}"
 
