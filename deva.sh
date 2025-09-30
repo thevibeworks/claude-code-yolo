@@ -32,10 +32,11 @@ Usage:
 Container management:
   deva.sh --inspect          Attach to running container for current project
   deva.sh --ps               List containers for current project
+  deva.sh --show-config      Show resolved configuration (debug)
 
 Wrapper flags:
   -v SRC:DEST[:OPT]     Mount additional volumes inside the container
-  -H DIR, --config-home DIR
+  -c DIR, --config-home DIR
                         Mount an alternate auth/config home into /home/deva
   -e VAR[=VALUE]        Pass environment variable into the container (pulls from host when VALUE omitted)
   --host-net            Use host networking for the agent container
@@ -44,7 +45,8 @@ Wrapper flags:
 Examples:
   deva.sh                             # Launch default agent (Claude)
   deva.sh codex -v ~/.ssh:/home/deva/.ssh:ro -- -m gpt-5-codex
-  deva.sh -H ~/work-claude-home -- --trace
+  deva.sh -c ~/work-claude-home -- --trace
+  deva.sh --show-config               # Debug configuration
 USAGE
 }
 
@@ -210,6 +212,54 @@ list_containers_pretty() {
     done
 }
 
+show_config() {
+    echo "=== deva.sh Configuration Debug ==="
+    echo ""
+    echo "Active Agent: ${ACTIVE_AGENT:-<not set>}"
+    echo "Default Agent: $DEFAULT_AGENT"
+    echo "Config Home: ${CONFIG_HOME:-<none>}"
+    echo "Config Home CLI: $CONFIG_HOME_FROM_CLI"
+    echo ""
+
+    if [ ${#LOADED_CONFIGS[@]} -gt 0 ]; then
+        echo "Loaded config files (in order):"
+        for cfg in "${LOADED_CONFIGS[@]}"; do
+            echo "  - $cfg"
+        done
+    else
+        echo "No config files loaded"
+    fi
+    echo ""
+
+    if [ ${#USER_VOLUMES[@]} -gt 0 ]; then
+        echo "Volume mounts:"
+        for vol in "${USER_VOLUMES[@]}"; do
+            echo "  -v $vol"
+        done
+    else
+        echo "No volume mounts"
+    fi
+    echo ""
+
+    if [ ${#USER_ENVS[@]} -gt 0 ]; then
+        echo "Environment variables:"
+        for env in "${USER_ENVS[@]}"; do
+            # Mask sensitive values
+            if [[ "$env" =~ (API_KEY|TOKEN|SECRET|PASSWORD)= ]]; then
+                echo "  -e ${env%%=*}=<masked>"
+            else
+                echo "  -e $env"
+            fi
+        done
+    else
+        echo "No environment variables"
+    fi
+    echo ""
+
+    echo "Docker image: ${DEVA_DOCKER_IMAGE}:${DEVA_DOCKER_TAG}"
+    echo "Container prefix: $DEVA_CONTAINER_PREFIX"
+}
+
 prepare_base_docker_args() {
     local container_name
     local project
@@ -264,7 +314,17 @@ append_user_volumes() {
     fi
 
     local mount
+    local warned=false
     for mount in "${USER_VOLUMES[@]}"; do
+        # Warn about /root/* mounts (should be /home/deva/*)
+        if [[ "$mount" == *:/root/* ]] && [ "$warned" = false ]; then
+            echo "WARNING: Detected volume mount to /root/* path" >&2
+            echo "  Mount: $mount" >&2
+            echo "  Container user changed from /root to /home/deva in v1.0.0" >&2
+            echo "  Please update mounts: /root/* → /home/deva/*" >&2
+            echo "" >&2
+            warned=true
+        fi
         DOCKER_ARGS+=( -v "$mount" )
     done
 }
@@ -599,9 +659,9 @@ parse_wrapper_args() {
                 i=$((i+2))
                 continue
                 ;;
-            -H)
+            -c)
                 if [ $((i+1)) -ge ${#incoming[@]} ]; then
-                    echo "error: -H requires a directory path" >&2
+                    echo "error: -c requires a directory path" >&2
                     exit 1
                 fi
                 local raw_c
@@ -653,6 +713,10 @@ if [ $# -gt 0 ]; then
             usage
             exit 0
             ;;
+        --show-config)
+            MANAGEMENT_MODE="show-config"
+            shift
+            ;;
         shell)
             MANAGEMENT_MODE="inspect"
             ACTION="shell"
@@ -669,9 +733,24 @@ if [ $# -gt 0 ]; then
     esac
 fi
 
-if [ "$MANAGEMENT_MODE" = "inspect" ] || [ "$MANAGEMENT_MODE" = "ps" ]; then
+if [ "$MANAGEMENT_MODE" = "inspect" ] || [ "$MANAGEMENT_MODE" = "ps" ] || [ "$MANAGEMENT_MODE" = "show-config" ]; then
     if [ "$MANAGEMENT_MODE" = "ps" ]; then
         list_containers_pretty
+        exit 0
+    fi
+
+    if [ "$MANAGEMENT_MODE" = "show-config" ]; then
+        # Parse args first to load config
+        if [ $# -gt 0 ]; then
+            parse_wrapper_args "$@"
+        fi
+        load_config_sources
+        if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+            ACTIVE_AGENT="$1"
+        else
+            ACTIVE_AGENT="$DEFAULT_AGENT"
+        fi
+        show_config
         exit 0
     fi
 
@@ -684,6 +763,12 @@ if [ $# -gt 0 ] && [ "$1" = "run" ]; then
     shift
 fi
 
+# Agent selection: First non-flag argument is the agent name.
+# If no agent specified, DEFAULT_AGENT is used (typically "claude").
+# Examples:
+#   deva.sh           → uses DEFAULT_AGENT (claude)
+#   deva.sh codex     → uses codex agent
+#   deva.sh -v /foo   → uses DEFAULT_AGENT with volume mount
 if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
     ACTIVE_AGENT="$1"
     shift
