@@ -19,6 +19,7 @@ CONFIG_ERRORS=()
 LOADED_CONFIGS=()
 AGENT_ARGS=()
 AGENT_EXPLICIT=false
+ATTACH_MODE=false
 
 usage() {
     cat <<'USAGE'
@@ -33,8 +34,12 @@ Container management:
   deva.sh --inspect          Attach to running container for current project
   deva.sh --ps               List containers for current project
   deva.sh --show-config      Show resolved configuration (debug)
+  deva.sh stop <agent>       Stop persistent container for agent
+  deva.sh rm <agent>         Remove persistent container for agent
+  deva.sh clean              Remove all stopped containers
 
 Wrapper flags:
+  -a, --attach          Attach to existing persistent container or create new one
   -v SRC:DEST[:OPT]     Mount additional volumes inside the container
   -c DIR, --config-home DIR
                         Mount an alternate auth/config home into /home/deva
@@ -43,9 +48,13 @@ Wrapper flags:
   --                    Everything after this sentinel is passed to the agent unchanged
 
 Examples:
-  deva.sh                             # Launch default agent (Claude)
+  deva.sh                             # Launch default agent (Claude) - ephemeral
+  deva.sh claude -a                   # Attach to existing or create persistent Claude container
   deva.sh codex -v ~/.ssh:/home/deva/.ssh:ro -- -m gpt-5-codex
   deva.sh -c ~/work-claude-home -- --trace
+  deva.sh stop claude                 # Stop persistent Claude container
+  deva.sh rm claude                   # Remove persistent Claude container
+  deva.sh clean                       # Remove all stopped containers
   deva.sh --show-config               # Debug configuration
 USAGE
 }
@@ -212,6 +221,100 @@ list_containers_pretty() {
     done
 }
 
+get_persistent_container_name() {
+    local agent="$1"
+    local project
+    project="$(basename "$(pwd)")"
+    echo "${DEVA_CONTAINER_PREFIX}-${agent}-${project}"
+}
+
+check_persistent_container_exists() {
+    local container_name="$1"
+    docker ps -a --filter "name=^${container_name}$" --format '{{.Names}}' | grep -q "^${container_name}$"
+}
+
+check_persistent_container_running() {
+    local container_name="$1"
+    docker ps --filter "name=^${container_name}$" --format '{{.Names}}' | grep -q "^${container_name}$"
+}
+
+stop_agent_container() {
+    local agent="$1"
+    local container_name
+    container_name="$(get_persistent_container_name "$agent")"
+
+    if ! check_persistent_container_exists "$container_name"; then
+        echo "No persistent container found for agent '$agent' in project $(basename "$(pwd)")"
+        return 1
+    fi
+
+    if check_persistent_container_running "$container_name"; then
+        echo "Stopping container: $container_name"
+        docker stop "$container_name"
+    else
+        echo "Container $container_name is already stopped"
+    fi
+}
+
+remove_agent_container() {
+    local agent="$1"
+    local container_name
+    container_name="$(get_persistent_container_name "$agent")"
+
+    if ! check_persistent_container_exists "$container_name"; then
+        echo "No persistent container found for agent '$agent' in project $(basename "$(pwd)")"
+        return 1
+    fi
+
+    if check_persistent_container_running "$container_name"; then
+        echo "Stopping container: $container_name"
+        docker stop "$container_name"
+    fi
+
+    echo "Removing container: $container_name"
+    docker rm "$container_name"
+}
+
+clean_stopped_containers() {
+    local project
+    project="$(basename "$(pwd)")"
+    local stopped_containers
+    stopped_containers=$(docker ps -a --filter "name=${DEVA_CONTAINER_PREFIX}-" --filter "status=exited" --format '{{.Names}}' | grep -- "-${project}" || true)
+
+    if [ -z "$stopped_containers" ]; then
+        echo "No stopped containers found for project $project"
+        return
+    fi
+
+    echo "Removing stopped containers for project $project:"
+    echo "$stopped_containers" | while read -r container; do
+        echo "  Removing: $container"
+        docker rm "$container"
+    done
+}
+
+attach_to_persistent_container() {
+    local agent="$1"
+    local container_name
+    container_name="$(get_persistent_container_name "$agent")"
+
+    if check_persistent_container_exists "$container_name"; then
+        if check_persistent_container_running "$container_name"; then
+            echo "Attaching to existing container: $container_name"
+            attach_to_container "$container_name"
+            return 0
+        else
+            echo "Starting existing container: $container_name"
+            docker start "$container_name"
+            attach_to_container "$container_name"
+            return 0
+        fi
+    fi
+
+    # Container doesn't exist, will be created by the main flow
+    return 1
+}
+
 show_config() {
     echo "=== deva.sh Configuration Debug ==="
     echo ""
@@ -264,19 +367,34 @@ prepare_base_docker_args() {
     local container_name
     local project
     project="$(basename "$(pwd)")"
-    container_name="${DEVA_CONTAINER_PREFIX}-${ACTIVE_AGENT}-${project}-$$"
 
-    DOCKER_ARGS=(
-        run --rm -it
-        --name "$container_name"
-        -v "$(pwd):$(pwd)"
-        -w "$(pwd)"
-        -e "WORKDIR=$(pwd)"
-        -e "DEVA_AGENT=${ACTIVE_AGENT}"
-        -e "DEVA_UID=$(id -u)"
-        -e "DEVA_GID=$(id -g)"
-        --add-host host.docker.internal:host-gateway
-    )
+    if [ "$ATTACH_MODE" = true ]; then
+        container_name="$(get_persistent_container_name "$ACTIVE_AGENT")"
+        DOCKER_ARGS=(
+            run -d
+            --name "$container_name"
+            -v "$(pwd):$(pwd)"
+            -w "$(pwd)"
+            -e "WORKDIR=$(pwd)"
+            -e "DEVA_AGENT=${ACTIVE_AGENT}"
+            -e "DEVA_UID=$(id -u)"
+            -e "DEVA_GID=$(id -g)"
+            --add-host host.docker.internal:host-gateway
+        )
+    else
+        container_name="${DEVA_CONTAINER_PREFIX}-${ACTIVE_AGENT}-${project}-$$"
+        DOCKER_ARGS=(
+            run --rm -it
+            --name "$container_name"
+            -v "$(pwd):$(pwd)"
+            -w "$(pwd)"
+            -e "WORKDIR=$(pwd)"
+            -e "DEVA_AGENT=${ACTIVE_AGENT}"
+            -e "DEVA_UID=$(id -u)"
+            -e "DEVA_GID=$(id -g)"
+            --add-host host.docker.internal:host-gateway
+        )
+    fi
 
     if [ -n "${LANG:-}" ]; then DOCKER_ARGS+=( -e "LANG=$LANG" ); fi
     if [ -n "${LC_ALL:-}" ]; then DOCKER_ARGS+=( -e "LC_ALL=$LC_ALL" ); fi
@@ -681,6 +799,11 @@ parse_wrapper_args() {
                 i=$((i+1))
                 continue
                 ;;
+            -a|--attach)
+                ATTACH_MODE=true
+                i=$((i+1))
+                continue
+                ;;
             *)
                 remaining+=("$arg")
                 i=$((i+1))
@@ -730,10 +853,34 @@ if [ $# -gt 0 ]; then
             MANAGEMENT_MODE="ps"
             shift
             ;;
+        stop)
+            MANAGEMENT_MODE="stop"
+            shift
+            if [ $# -eq 0 ]; then
+                echo "error: stop command requires an agent name" >&2
+                exit 1
+            fi
+            ACTIVE_AGENT="$1"
+            shift
+            ;;
+        rm)
+            MANAGEMENT_MODE="rm"
+            shift
+            if [ $# -eq 0 ]; then
+                echo "error: rm command requires an agent name" >&2
+                exit 1
+            fi
+            ACTIVE_AGENT="$1"
+            shift
+            ;;
+        clean)
+            MANAGEMENT_MODE="clean"
+            shift
+            ;;
     esac
 fi
 
-if [ "$MANAGEMENT_MODE" = "inspect" ] || [ "$MANAGEMENT_MODE" = "ps" ] || [ "$MANAGEMENT_MODE" = "show-config" ]; then
+if [ "$MANAGEMENT_MODE" = "inspect" ] || [ "$MANAGEMENT_MODE" = "ps" ] || [ "$MANAGEMENT_MODE" = "show-config" ] || [ "$MANAGEMENT_MODE" = "stop" ] || [ "$MANAGEMENT_MODE" = "rm" ] || [ "$MANAGEMENT_MODE" = "clean" ]; then
     if [ "$MANAGEMENT_MODE" = "ps" ]; then
         list_containers_pretty
         exit 0
@@ -751,6 +898,23 @@ if [ "$MANAGEMENT_MODE" = "inspect" ] || [ "$MANAGEMENT_MODE" = "ps" ] || [ "$MA
             ACTIVE_AGENT="$DEFAULT_AGENT"
         fi
         show_config
+        exit 0
+    fi
+
+    if [ "$MANAGEMENT_MODE" = "stop" ]; then
+        check_agent "$ACTIVE_AGENT"
+        stop_agent_container "$ACTIVE_AGENT"
+        exit 0
+    fi
+
+    if [ "$MANAGEMENT_MODE" = "rm" ]; then
+        check_agent "$ACTIVE_AGENT"
+        remove_agent_container "$ACTIVE_AGENT"
+        exit 0
+    fi
+
+    if [ "$MANAGEMENT_MODE" = "clean" ]; then
+        clean_stopped_containers
         exit 0
     fi
 
@@ -835,5 +999,23 @@ if [ ${#AGENT_COMMAND[@]} -eq 0 ]; then
     exit 1
 fi
 
-echo "Launching ${ACTIVE_AGENT} via ${DEVA_DOCKER_IMAGE}:${DEVA_DOCKER_TAG}" 
-docker "${DOCKER_ARGS[@]}" "${AGENT_COMMAND[@]}"
+if [ "$ATTACH_MODE" = true ]; then
+    # Try to attach to existing persistent container
+    if attach_to_persistent_container "$ACTIVE_AGENT"; then
+        exit 0
+    fi
+
+    # Container doesn't exist, create new persistent container
+    echo "Creating persistent container for ${ACTIVE_AGENT} via ${DEVA_DOCKER_IMAGE}:${DEVA_DOCKER_TAG}"
+    container_name="$(get_persistent_container_name "$ACTIVE_AGENT")"
+
+    # Start container in detached mode with a keep-alive command
+    docker "${DOCKER_ARGS[@]}" "${DEVA_DOCKER_IMAGE}:${DEVA_DOCKER_TAG}" tail -f /dev/null >/dev/null
+
+    # Now attach to the running container
+    echo "Attaching to new persistent container: $container_name"
+    attach_to_container "$container_name"
+else
+    echo "Launching ${ACTIVE_AGENT} via ${DEVA_DOCKER_IMAGE}:${DEVA_DOCKER_TAG}"
+    docker "${DOCKER_ARGS[@]}" "${AGENT_COMMAND[@]}"
+fi
