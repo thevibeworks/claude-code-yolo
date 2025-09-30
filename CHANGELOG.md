@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0-alpha] - 2025-09-18 🔄 **BREAKING: MAJOR REBRAND & REFACTOR**
+## [0.7.0] - 2025-09-18 🔄 **BREAKING: MAJOR REBRAND & REFACTOR**
 
 **Claude Code YOLO → deva.sh Multi-Agent Wrapper**
 
@@ -47,10 +47,6 @@ claude-yolo -v ~/.ssh:/home/deva/.ssh:ro
 ```
 
 This release implements the complete vision from #98 - a Docker-first multi-agent wrapper that preserves YOLO ergonomics while enabling polyglot AI toolchains.
-
-**Why v1.0.0?** This represents a fundamental architectural shift that establishes our stable multi-agent API. The alpha tag reflects ongoing development in the codex worktree before mainline merge.
-
-**Version Note**: Per semver, consider `0.7.0` (pre-1.0) or `1.0.0-alpha.1` if API not yet production-ready. Current `1.0.0-alpha` signals stable API with pre-release implementation.
 
 ## [0.6.0] - 2025-09-16
 

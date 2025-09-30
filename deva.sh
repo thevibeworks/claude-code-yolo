@@ -320,7 +320,7 @@ append_user_volumes() {
         if [[ "$mount" == *:/root/* ]] && [ "$warned" = false ]; then
             echo "WARNING: Detected volume mount to /root/* path" >&2
             echo "  Mount: $mount" >&2
-            echo "  Container user changed from /root to /home/deva in v1.0.0" >&2
+            echo "  Container user changed from /root to /home/deva in v0.7.0" >&2
             echo "  Please update mounts: /root/* → /home/deva/*" >&2
             echo "" >&2
             warned=true
